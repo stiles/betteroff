@@ -8,7 +8,9 @@ from betteroff.catalog import load_catalog
 from betteroff.charts import (
     LINE_INVALID_MODE,
     _dodge,
+    _font_file_names,
     build_chart,
+    font_installed,
     monthly,
     prepare,
     recession_dates,
@@ -272,3 +274,74 @@ def test_static_exports_render(tmp_path, fmt):
         assert b'<text' in data
     if fmt == 'vl.json':
         assert json.loads(data)['$schema'].startswith('https://vega.github.io/schema/vega-lite/v6')
+
+
+def fonts_in(spec):
+    found = set()
+
+    def walk(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k in ('font', 'labelFont', 'subtitleFont'):
+                    found.add(v)
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk({k: v for k, v in spec.items() if k != 'usermeta'})
+    return found
+
+
+def test_default_font_is_inter():
+    spec = build_chart(make_ds()).to_dict()
+    assert fonts_in(spec) == {'Inter, Helvetica, Arial, sans-serif'}
+    assert spec['usermeta'] == {'betteroff': {'font': 'Inter'}}
+
+
+def test_font_option_and_env(monkeypatch):
+    spec = build_chart(make_ds(), font='IBM Plex Sans').to_dict()
+    assert fonts_in(spec) == {'IBM Plex Sans, Helvetica, Arial, sans-serif'}
+    monkeypatch.setenv('BETTEROFF_FONT', 'Atkinson Hyperlegible Next')
+    spec = build_chart(make_ds()).to_dict()
+    assert spec['usermeta']['betteroff']['font'] == 'Atkinson Hyperlegible Next'
+    assert (
+        build_chart(make_ds(), font='Geist').to_dict()['usermeta']['betteroff']['font'] == 'Geist'
+    )
+
+
+@pytest.mark.parametrize('bad', ['', '  ', 'Inter, Arial', '"Inter"', 'Inter;'])
+def test_font_must_be_one_family(bad):
+    with pytest.raises(InputError, match='single font family'):
+        build_chart(make_ds(), font=bad)
+
+
+def test_bad_font_env_names_the_variable(monkeypatch):
+    monkeypatch.setenv('BETTEROFF_FONT', 'Inter, Arial')
+    with pytest.raises(InputError, match='BETTEROFF_FONT'):
+        build_chart(make_ds())
+
+
+def test_font_installed_matches_file_names(tmp_path, monkeypatch):
+    for name in ('InterVariable.ttf', 'IBMPlexSans-Regular.otf', 'Avenir Next.ttc', 'notes.txt'):
+        (tmp_path / name).write_bytes(b'')
+    monkeypatch.setattr('betteroff.charts.font_dirs', lambda: [tmp_path])
+    _font_file_names.cache_clear()
+    try:
+        assert font_installed('Inter')
+        assert font_installed('IBM Plex Sans')
+        assert font_installed('Avenir Next')
+        assert not font_installed('Montserrat')
+        assert not font_installed('notes')
+    finally:
+        _font_file_names.cache_clear()
+
+
+def test_missing_font_noted_on_static_export(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr('betteroff.charts.font_installed', lambda family: False)
+    chart = build_chart(make_ds(), font='Nonesuch Sans')
+    with caplog.at_level('INFO', logger='betteroff'):
+        save_chart(chart, tmp_path / 'g.vl.json', 'vl.json')
+        assert not caplog.records
+        save_chart(chart, tmp_path / 'g.svg', 'svg')
+    assert 'Nonesuch Sans not found' in caplog.text

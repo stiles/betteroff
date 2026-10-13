@@ -92,8 +92,22 @@ Static formats use a 960 by 540 frame (16:9). Change it with `--width` and `--he
 
 ## Fonts
 
-Charts ask for Roboto, then Helvetica, Arial and any sans-serif. HTML uses whatever the viewer's browser has. Static exports can only use fonts installed on your system; if Roboto isn't installed, Betteroff says so on stderr and the export uses the fallback. Betteroff never downloads fonts.
+Charts use [Inter](https://rsms.me/inter/), falling back to Helvetica, Arial and any sans-serif. Pick another family for one chart with `--font`, or set your own default with `BETTEROFF_FONT`:
+
+```bash
+betteroff chart 34 --font "IBM Plex Sans"
+export BETTEROFF_FONT="Atkinson Hyperlegible Next"
+```
+
+In Python, `ds.chart(font='IBM Plex Sans')`; in a recipe, `font = 'IBM Plex Sans'`. An explicit font beats `BETTEROFF_FONT`, which beats Inter. Give one family name; Betteroff adds the fallbacks. The sidecar records the family.
+
+Betteroff never downloads fonts, so a font has to be installed where the chart is drawn:
+
+- HTML uses whatever the viewer's computer has. Inter isn't installed by default on macOS or Windows, so many readers see Helvetica or Arial.
+- Static exports use fonts installed on your system. If Betteroff can't find the family among your font files, it says so on stderr and the export uses the fallback.
+
+Direct labels at the right edge reserve room by character count, sized for wide faces such as Montserrat. A very wide or large font can still crowd the edge; widen the chart with `--width` if it does.
 
 ## Style
 
-Styling is set on the chart's own marks and axes rather than through a global Altair theme, so importing Betteroff in a notebook doesn't restyle your other charts. Color themes change only line colors; fonts, sizes and gridlines are the same for every theme.
+Styling is set on the chart's own marks and axes rather than through a global Altair theme, so importing Betteroff in a notebook doesn't restyle your other charts. Color themes change only line colors; the font is a separate setting, and sizes and gridlines are the same for every chart.

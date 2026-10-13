@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import logging
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import date
@@ -31,7 +32,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger('betteroff')
 
-FONT = 'Roboto, Helvetica, Arial, sans-serif'
+DEFAULT_FONT = 'Inter'
+FALLBACK_FONTS = 'Helvetica, Arial, sans-serif'
+FONT_ENV = 'BETTEROFF_FONT'
+FONT_FILE_SUFFIXES = {'.ttf', '.otf', '.ttc', '.otc'}
 TEXT_COLOR = '#222222'
 MUTED = '#666666'
 GRID = '#e2e2e2'
@@ -41,6 +45,7 @@ NONRESPONSE_WIDTH = 1.5
 LINE_WIDTH = 2.25
 STATIC_WIDTH, STATIC_HEIGHT = 960, 540
 MAX_DIRECT_LABELS = 4
+LABEL_CHAR_WIDTH = 7.2  # Px per character of a 12px bold label; fits wide faces like Montserrat
 LINE_INVALID_MODE = 'break-paths-show-domains'
 RECESSIONS_SOURCE = 'NBER Business Cycle Dating Committee'
 RECESSIONS_URL = 'https://www.nber.org/research/data/us-business-cycle-expansions-and-contractions'
@@ -224,17 +229,22 @@ def build_chart(
     height: int | None = None,
     container: bool = False,
     theme: str | Path | Theme | None = None,
+    font: str | None = None,
 ) -> alt.LayerChart:
     """Build the standard exploratory chart.
 
     `width` and `height` set the whole frame (default 960x540, 16:9); `container`
     makes the chart fill its HTML container's width instead. `theme` is a packaged
-    theme name, a path to a theme TOML file or a `Theme`.
+    theme name, a path to a theme TOML file or a `Theme`. `font` is one font family
+    name; it defaults to $BETTEROFF_FONT, then Inter, and falls back to Helvetica,
+    Arial and sans-serif.
     """
     alt = require_altair()
     catalog = load_catalog()
     q = dataset.question
     th = load_theme(theme)
+    family = resolve_font(font)
+    font_css = font_stack(family)
     prep = prepare(dataset, rolling, start, end)
     is_index = dataset.measure == 'index'
     columns = prep.columns
@@ -256,7 +266,9 @@ def build_chart(
         unit_suffix = ' (%)'
 
     direct_labels = len(columns) <= MAX_DIRECT_LABELS and not is_index
-    label_space = max(len(labels[c]) for c in columns) * 6.6 + 14 if direct_labels else 10
+    label_space = (
+        max(len(labels[c]) for c in columns) * LABEL_CHAR_WIDTH + 14 if direct_labels else 10
+    )
     total_w = width or STATIC_WIDTH
     total_h = height or STATIC_HEIGHT
     plot_w: Any = 'container' if container else max(int(total_w - 45 - label_space), 200)
@@ -275,7 +287,7 @@ def build_chart(
             format='%Y' if span_years >= 3 else '%b %Y',
             tickCount=max(int(plot_w / 90), 3) if isinstance(plot_w, int) else 8,
             grid=False,
-            labelFont=FONT,
+            labelFont=font_css,
             labelColor=MUTED,
             labelFontSize=11,
             tickColor=GRID,
@@ -297,7 +309,7 @@ def build_chart(
             gridColor=GRID,
             domain=False,
             ticks=False,
-            labelFont=FONT,
+            labelFont=font_css,
             labelColor=MUTED,
             labelFontSize=11,
             labelPadding=6,
@@ -313,7 +325,7 @@ def build_chart(
             orient='top',
             title=None,
             direction='horizontal',
-            labelFont=FONT,
+            labelFont=font_css,
             labelColor=TEXT_COLOR,
             symbolType='stroke',
             symbolStrokeWidth=3,
@@ -372,7 +384,7 @@ def build_chart(
         )
         layers.append(
             alt.Chart(brk)
-            .mark_text(align='left', baseline='top', dx=4, font=FONT, fontSize=10, color=MUTED)
+            .mark_text(align='left', baseline='top', dx=4, font=font_css, fontSize=10, color=MUTED)
             .encode(x=x, y=alt.value(2), text='text:N')
         )
 
@@ -459,7 +471,12 @@ def build_chart(
             layers.append(
                 alt.Chart(pd.DataFrame(ends))
                 .mark_text(
-                    align='left', baseline='middle', dx=6, font=FONT, fontSize=12, fontWeight='bold'
+                    align='left',
+                    baseline='middle',
+                    dx=6,
+                    font=font_css,
+                    fontSize=12,
+                    fontWeight='bold',
                 )
                 .encode(x=x, y=y, text='label:N', color=label_color)
             )
@@ -476,7 +493,7 @@ def build_chart(
         .mark_text(
             align='left',
             baseline='top',
-            font=FONT,
+            font=font_css,
             fontSize=10,
             color=MUTED,
             lineBreak='\n',
@@ -508,18 +525,37 @@ def build_chart(
             subtitle=subtitle,
             anchor='start',
             frame='group',
-            font=FONT,
+            font=font_css,
             fontSize=18,
             fontWeight='bold',
             color=TEXT_COLOR,
-            subtitleFont=FONT,
+            subtitleFont=font_css,
             subtitleFontSize=13,
             subtitleColor=MUTED,
             offset=14,
         ),
         view=alt.ViewBackground(stroke=None),
+        usermeta={'betteroff': {'font': family}},
     )
     return chart
+
+
+def resolve_font(font: str | None = None) -> str:
+    """The font family to use: `font`, then $BETTEROFF_FONT, then Inter."""
+    from_env = font is None
+    family = (os.environ.get(FONT_ENV) or DEFAULT_FONT) if from_env else font
+    family = (family or '').strip()
+    if not family or re.search(r'[,;"\'{}]', family):
+        where = f'{FONT_ENV} ' if from_env else ''
+        raise InputError(
+            f'Font {where}"{family}" is not a single font family name.',
+            'Pass one family, such as "IBM Plex Sans"; Betteroff adds the fallbacks.',
+        )
+    return family
+
+
+def font_stack(family: str) -> str:
+    return f'{family}, {FALLBACK_FONTS}'
 
 
 def font_dirs() -> list[Path]:
@@ -539,12 +575,33 @@ def font_dirs() -> list[Path]:
     return [d for d in dirs if d.is_dir()]
 
 
+def _squash(text: str) -> str:
+    return re.sub(r'[^a-z0-9]', '', text.lower())
+
+
 @cache
-def has_roboto() -> bool:
-    for d in font_dirs():
-        for _ in d.rglob('Roboto*.[ot]tf'):
-            return True
-    return False
+def _font_file_names() -> tuple[str, ...]:
+    return tuple(
+        _squash(f.stem)
+        for d in font_dirs()
+        for f in d.rglob('*')
+        if f.suffix.lower() in FONT_FILE_SUFFIXES
+    )
+
+
+def font_installed(family: str) -> bool:
+    """Best guess from file names, which nearly always start with the family name."""
+    key = _squash(family)
+    return any(name.startswith(key) for name in _font_file_names())
+
+
+def chart_font(chart: alt.LayerChart) -> str:
+    meta = getattr(chart, 'usermeta', None)
+    if isinstance(meta, dict):
+        family = meta.get('betteroff', {}).get('font')
+        if isinstance(family, str):
+            return family
+    return resolve_font()
 
 
 def chart_format(path: Path) -> str | None:
@@ -557,9 +614,10 @@ def chart_format(path: Path) -> str | None:
 
 def save_chart(chart: alt.LayerChart, path: Path, fmt: str) -> None:
     require_altair()
-    if fmt in ('svg', 'png', 'pdf') and not has_roboto():
+    if fmt in ('svg', 'png', 'pdf') and not font_installed(family := chart_font(chart)):
         log.info(
-            'Roboto not found; static export uses Helvetica, Arial or another sans-serif font.'
+            '%s not found; static export uses Helvetica, Arial or another sans-serif font.',
+            family,
         )
     if fmt == 'html':
         chart.save(str(path), format='html', inline=True)

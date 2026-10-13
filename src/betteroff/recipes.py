@@ -32,6 +32,7 @@ JOB_KEYS = {
     'width',
     'height',
     'theme',
+    'font',
 }
 TOP_KEYS = {'schema_version', 'output_dir', 'jobs'}
 
@@ -52,6 +53,7 @@ class Job:
     width: int | None = None
     height: int | None = None
     theme: Theme | None = None
+    font: str | None = None
 
 
 @dataclass
@@ -67,7 +69,7 @@ def _str(value: Any) -> str | None:
 
 def load_recipe(path: Path) -> Recipe:
     from .catalog import load_catalog
-    from .charts import CHART_FORMATS
+    from .charts import CHART_FORMATS, resolve_font
     from .export import DATA_FORMATS
     from .models import check_measure
 
@@ -130,6 +132,7 @@ def load_recipe(path: Path) -> Recipe:
                 width=j.get('width'),
                 height=j.get('height'),
                 theme=load_theme(j.get('theme'), base=base),
+                font=resolve_font(_str(j.get('font'))),
             )
         )
     return Recipe(path=path.resolve(), output_dir=output_dir, jobs=jobs)
@@ -175,6 +178,7 @@ def run_recipe(path: Path, refresh: bool = False, offline: bool = False) -> list
                 width=job.width,
                 height=job.height,
                 theme=job.theme,
+                font=job.font,
             )
             for fmt in job.chart_formats:
                 out = recipe.output_dir / f'{job.name}.{fmt}'
@@ -186,6 +190,7 @@ def run_recipe(path: Path, refresh: bool = False, offline: bool = False) -> list
                         'raw': job.raw,
                         'recessions': job.recessions,
                         'theme': job.theme.record() if job.theme else None,
+                        'font': job.font,
                     },
                 }
                 if job.recessions:

@@ -101,3 +101,23 @@ def test_unknown_theme_in_recipe(tmp_path):
     )
     with pytest.raises(InputError, match='Unknown theme'):
         load_recipe(write(tmp_path, text))
+
+
+def test_font_in_recipe(tmp_path, monkeypatch):
+    monkeypatch.setenv('BETTEROFF_FONT', 'Work Sans')
+    text = (
+        'schema_version = 1\n'
+        '[[jobs]]\nquestion = "34"\nchart_formats = ["html"]\nfont = "IBM Plex Sans"\n'
+        '[[jobs]]\nquestion = "30"\nchart_formats = ["html"]\n'
+    )
+    jobs = load_recipe(write(tmp_path, text)).jobs
+    assert [j.font for j in jobs] == ['IBM Plex Sans', 'Work Sans']
+
+
+def test_bad_font_in_recipe(tmp_path):
+    text = (
+        'schema_version = 1\n[[jobs]]\nquestion = "34"\nchart_formats = ["html"]\n'
+        'font = "Inter, Arial"\n'
+    )
+    with pytest.raises(InputError, match='single font family'):
+        load_recipe(write(tmp_path, text))

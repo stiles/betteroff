@@ -88,12 +88,13 @@ Builds a chart from the same validated data `get` returns. Needs the `charts` ex
 | `--start`, `--end` | Displayed range. Defaults to the start of monthly data, usually January 1978 |
 | `--width`, `--height` | Frame size in pixels for static output. Default 960 by 540 |
 | `-t, --theme NAME\|FILE` | Color theme: `okabe-ito` (default), `puor`, `brbg`, `rdbu`, `tol` or a `.toml` file |
+| `--font FAMILY` | Font family for chart text, such as `"IBM Plex Sans"`. Defaults to `BETTEROFF_FONT`, then Inter |
 | `--refresh`, `--offline` | As for `get` |
 | `--open` | Open the file in a browser |
 | `--force` | Overwrite existing files |
 | `-q, --quiet` | As for `get` |
 
-HTML fills the width of its container unless you pass `--width`. An unknown theme fails before anything is fetched. See [charts.md](charts.md).
+HTML fills the width of its container unless you pass `--width`. An unknown theme or a font value that isn't a single family name fails before anything is fetched. See [charts.md](charts.md).
 
 ## `themes`
 
@@ -111,6 +112,15 @@ Runs a TOML recipe. See [recipes.md](recipes.md).
 ## `cache info`
 
 Lists each cached question with its latest survey month, retrieval time, last check, snapshot id and the number of snapshots kept. Tab-separated when piped.
+
+## `cache prune`
+
+Deletes older snapshots, keeping the newest per question, plus any snapshot files the manifest doesn't list. The latest snapshot for each question is always kept. Prints each deleted path on stdout and a summary on stderr. Sidecars written from a pruned snapshot still record its hash, but the raw file behind them is gone.
+
+| Option | Effect |
+| --- | --- |
+| `--keep N` | Snapshots to keep per question; default 1 |
+| `--dry-run` | List what would be deleted without deleting it |
 
 ## `cache path`
 

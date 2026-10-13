@@ -131,6 +131,7 @@ def isolated_cache(tmp_path, monkeypatch) -> Cache:
     root = tmp_path / 'cache'
     monkeypatch.setenv('BETTEROFF_CACHE_DIR', str(root))
     monkeypatch.delenv('BETTEROFF_DEBUG', raising=False)
+    monkeypatch.delenv('BETTEROFF_FONT', raising=False)
     return Cache(root)
 
 

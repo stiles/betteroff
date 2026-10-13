@@ -197,6 +197,25 @@ def test_chart_theme_recorded(source, gov_xls, tmp_path):
     assert meta['export']['chart']['theme']['colors']['positive'][0] == '#018571'
 
 
+def test_chart_font_recorded(source, gov_xls, tmp_path, monkeypatch):
+    source.queue = [gov_xls]
+    out = tmp_path / 'g.vl.json'
+    assert run('chart', '34', '--font', 'Montserrat', '-o', str(out)).exit_code == 0
+    meta = json.loads((tmp_path / 'g.vl.json.meta.json').read_text())
+    assert meta['export']['chart']['font'] == 'Montserrat'
+    assert json.loads(out.read_text())['title']['font'].startswith('Montserrat, ')
+    monkeypatch.setenv('BETTEROFF_FONT', 'Work Sans')
+    assert run('chart', '34', '-o', str(out), '--force').exit_code == 0
+    meta = json.loads((tmp_path / 'g.vl.json.meta.json').read_text())
+    assert meta['export']['chart']['font'] == 'Work Sans'
+
+
+def test_bad_font_fails_before_fetching(source, tmp_path):
+    result = run('chart', '34', '--font', 'Inter, Arial', '-o', str(tmp_path / 'g.html'))
+    assert result.exit_code == 2
+    assert source.calls == 0
+
+
 def test_unknown_theme_fails_before_fetching(source, tmp_path):
     result = run('chart', '34', '--theme', 'neon', '-o', str(tmp_path / 'g.html'))
     assert result.exit_code == 2
@@ -224,6 +243,21 @@ def test_cache_commands(source, gov_xls, isolated_cache):
     source.queue = [gov_xls]
     run('get', '34', '-q')
     assert 'government_policy' in run('cache', 'info').stdout
+
+
+def test_cache_prune(source, gov, gov_xls, isolated_cache):
+    source.queue = [gov_xls]
+    run('get', '34', '-q')
+    source.queue = [build_xls(gov, [*gov_rows(), (1980, 1, [30, 30, 38, 2])])]
+    run('get', '34', '-q', '--refresh')
+    old = isolated_cache.snapshots('government_policy')[0]
+    dry = run('cache', 'prune', '--dry-run')
+    assert dry.exit_code == 0 and 'Would remove 1 snapshot file' in dry.stderr
+    assert dry.stdout.strip() == str(isolated_cache.snapshot_path(old.sha256))
+    assert len(isolated_cache.snapshots('government_policy')) == 2
+    assert run('cache', 'prune').exit_code == 0
+    assert len(isolated_cache.snapshots('government_policy')) == 1
+    assert run('cache', 'prune', '--keep', '0').exit_code == 2
 
 
 def test_search_imports_no_heavy_modules():

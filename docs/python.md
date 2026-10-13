@@ -60,6 +60,7 @@ chart = ds.chart(
     height=None,
     container=False,    # True: fill the HTML container's width
     theme='okabe-ito',  # or 'puor', 'brbg', 'rdbu', 'tol', a .toml path, or a Theme
+    font=None,          # one font family; defaults to $BETTEROFF_FONT, then 'Inter'
 )
 chart                   # displays inline in Jupyter
 chart.save('gov.html', inline=True)   # offline HTML
@@ -77,7 +78,7 @@ rule = alt.Chart(pd.DataFrame({'date': ['2020-03-01']})).mark_rule().encode(x='d
 chart + rule
 ```
 
-To use the CLI's export rules, including the Roboto check and 2x PNG:
+To use the CLI's export rules, including the installed-font check and 2x PNG:
 
 ```python
 from pathlib import Path

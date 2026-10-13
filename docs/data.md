@@ -98,13 +98,15 @@ In October 2026, seven of the 18 tables had between one and four flagged months,
 ```text
 cache/
   manifest.json          latest snapshot and history per question
+  manifest.lock          present only while a process updates the manifest
   snapshots/<sha256>.xls raw downloads, named by content hash
 ```
 
 - A snapshot checked in the past 24 hours is reused. Otherwise Betteroff checks the source.
 - If that automatic check fails, Betteroff uses the saved snapshot and warns. If `--refresh` fails, the command fails.
 - New bytes are parsed and validated before they're saved. A failed download, an access page or a schema mismatch never replaces the latest snapshot.
-- Snapshots are kept by hash, so a refresh never deletes the file behind earlier work. The manifest records every snapshot; `cache info` shows how many each question has. Pruning and picking an older snapshot aren't available yet.
+- Snapshots are kept by hash, so a refresh never deletes the file behind earlier work. The manifest records every snapshot; `cache info` shows how many each question has. `cache prune` deletes older ones when you ask it to. Picking an older snapshot isn't available yet.
+- Processes sharing a cache, such as two recipe runs, take turns updating the manifest through `manifest.lock`. A lock older than 30 seconds is treated as left over from a crash and removed.
 - Betteroff can't recover versions published before it started saving them.
 
 ### Revisions

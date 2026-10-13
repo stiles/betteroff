@@ -66,7 +66,7 @@ betteroff chart 30 --start 2000 -o unemp.png                # 2x PNG
 betteroff chart 30 --theme brbg -o unemp_brbg.html          # another color theme
 ```
 
-Favorable and unfavorable answers get the theme's two colors on every chart; neutral answers are gray and nonresponse a dashed light gray. `betteroff themes` lists the color themes with swatches; the default is `okabe-ito`, a colorblind-safe blue and vermillion.
+Favorable and unfavorable answers get the theme's two colors on every chart; neutral answers are gray and nonresponse a dashed light gray. `betteroff themes` lists the color themes with swatches; the default is `okabe-ito`, a colorblind-safe blue and vermillion. Text is set in Inter; change it with `--font` or `BETTEROFF_FONT`.
 
 Table numbers and ids are interchangeable: `betteroff get 34` and `betteroff get government_policy` return the same data.
 
@@ -179,6 +179,7 @@ Errors print one line and a suggested fix. Add `--debug` before the command, or 
 | --- | --- |
 | `BETTEROFF_CACHE_DIR` | Cache location; defaults to the platform cache directory (`betteroff cache path`) |
 | `BETTEROFF_DEBUG` | Show tracebacks |
+| `BETTEROFF_FONT` | Default chart font family; Inter if unset |
 | `NO_COLOR` | Disable color |
 
 ## Data use

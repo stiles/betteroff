@@ -409,6 +409,12 @@ def chart_cmd(
             '--theme', '-t', help='Color theme name or .toml file. See `betteroff themes`.'
         ),
     ] = None,
+    font: Annotated[
+        str | None,
+        typer.Option(
+            '--font', help='Font family for chart text. Defaults to $BETTEROFF_FONT, then Inter.'
+        ),
+    ] = None,
     refresh: RefreshOpt = False,
     offline: OfflineOpt = False,
     open_: Annotated[bool, typer.Option('--open', help='Open the result in a browser.')] = False,
@@ -426,6 +432,7 @@ def chart_cmd(
         build_chart,
         chart_format,
         require_altair,
+        resolve_font,
         save_chart,
     )
     from .export import check_writable, resolve_format, sidecar, sidecar_path, write_sidecar
@@ -435,6 +442,7 @@ def chart_cmd(
     require_altair()
     q = load_catalog().resolve(question)
     chosen_theme = load_theme(theme)
+    chosen_font = resolve_font(font)
     if output is None:
         chosen = resolve_format(None, fmt, CHART_FORMATS, chart_format, 'html')
         output = Path(f'{q.id}.{chosen}')
@@ -454,6 +462,7 @@ def chart_cmd(
         height=height,
         container=chosen == 'html' and width is None,
         theme=chosen_theme,
+        font=chosen_font,
     )
     save_chart(chart, output, chosen)
     details: dict[str, Any] = {
@@ -465,6 +474,7 @@ def chart_cmd(
             'start': start,
             'end': end,
             'theme': chosen_theme.record(),
+            'font': chosen_font,
         },
     }
     if recessions:
@@ -582,6 +592,31 @@ def cache_info() -> None:
     err.print(
         '[dim]Latest month is the newest survey month in the source; Michigan posts detailed '
         'tables about four weeks after each final release.[/dim]'
+    )
+
+
+@cache_app.command('prune')
+def cache_prune(
+    keep: Annotated[
+        int, typer.Option('--keep', help='Snapshots to keep per question, newest first.')
+    ] = 1,
+    dry_run: Annotated[
+        bool, typer.Option('--dry-run', help='List what would be deleted without deleting it.')
+    ] = False,
+) -> None:
+    """Delete older snapshots. The latest snapshot for each question is always kept.
+
+    Example: betteroff cache prune --keep 3 --dry-run
+    """
+    from .cache import Cache
+
+    result = Cache().prune(keep=keep, dry_run=dry_run)
+    for path in result.removed:
+        sys.stdout.write(f'{path}\n')
+    verb = 'Would remove' if dry_run else 'Removed'
+    err.print(
+        f'{verb} {len(result.removed)} snapshot file(s) ({result.bytes_freed / 1e6:.1f} MB) '
+        f'and {result.dropped_entries} manifest record(s).'
     )
 
 
