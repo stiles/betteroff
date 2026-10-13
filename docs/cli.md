@@ -87,12 +87,17 @@ Builds a chart from the same validated data `get` returns. Needs the `charts` ex
 | `-m, --measure share\|index` | Response shares (default) or the index score |
 | `--start`, `--end` | Displayed range. Defaults to the start of monthly data, usually January 1978 |
 | `--width`, `--height` | Frame size in pixels for static output. Default 960 by 540 |
+| `-t, --theme NAME\|FILE` | Color theme: `okabe-ito` (default), `puor`, `brbg`, `rdbu`, `tol` or a `.toml` file |
 | `--refresh`, `--offline` | As for `get` |
 | `--open` | Open the file in a browser |
 | `--force` | Overwrite existing files |
 | `-q, --quiet` | As for `get` |
 
-HTML fills the width of its container unless you pass `--width`. See [charts.md](charts.md).
+HTML fills the width of its container unless you pass `--width`. An unknown theme fails before anything is fetched. See [charts.md](charts.md).
+
+## `themes`
+
+Lists the packaged color themes with swatches for the positive, neutral, negative and nonresponse colors, and marks the default. Piped, each theme is a tab-separated line: `name`, `positive`, `negative`, `description`. Works offline.
 
 ## `run FILE`
 

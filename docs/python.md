@@ -59,6 +59,7 @@ chart = ds.chart(
     width=None,         # frame size in px, default 960 x 540
     height=None,
     container=False,    # True: fill the HTML container's width
+    theme='okabe-ito',  # or 'puor', 'brbg', 'rdbu', 'tol', a .toml path, or a Theme
 )
 chart                   # displays inline in Jupyter
 chart.save('gov.html', inline=True)   # offline HTML

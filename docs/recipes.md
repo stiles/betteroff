@@ -60,6 +60,7 @@ Each `[[jobs]]` table:
 | `raw` | `true` | Show monthly lines behind a rolling average |
 | `recessions` | `false` | Shade NBER recessions |
 | `width`, `height` | 960, 540 | Chart frame size |
+| `theme` | `okabe-ito` | Color theme name, or a `.toml` theme file relative to the recipe |
 
 Each job needs at least one data or chart format. Unknown keys are errors, so a typo like `rollin = 12` fails instead of being ignored. The recipe is checked completely before anything is fetched or written.
 

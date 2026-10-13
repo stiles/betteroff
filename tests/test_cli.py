@@ -188,6 +188,29 @@ def test_chart_missing_extra_message(monkeypatch):
     assert 'betteroff[charts]' in result.stderr
 
 
+def test_chart_theme_recorded(source, gov_xls, tmp_path):
+    source.queue = [gov_xls]
+    out = tmp_path / 'g.vl.json'
+    assert run('chart', '34', '--theme', 'brbg', '-o', str(out)).exit_code == 0
+    meta = json.loads((tmp_path / 'g.vl.json.meta.json').read_text())
+    assert meta['export']['chart']['theme']['name'] == 'brbg'
+    assert meta['export']['chart']['theme']['colors']['positive'][0] == '#018571'
+
+
+def test_unknown_theme_fails_before_fetching(source, tmp_path):
+    result = run('chart', '34', '--theme', 'neon', '-o', str(tmp_path / 'g.html'))
+    assert result.exit_code == 2
+    assert 'betteroff themes' in result.stderr
+    assert source.calls == 0
+
+
+def test_themes_command():
+    lines = run('themes').stdout.splitlines()
+    names = [line.split('\t')[0] for line in lines]
+    assert names[0] == 'okabe-ito'
+    assert {'puor', 'brbg', 'rdbu', 'tol'} <= set(names)
+
+
 def test_chart_vl_json(source, gov_xls, tmp_path):
     source.queue = [gov_xls]
     out = tmp_path / 'g.vl.json'

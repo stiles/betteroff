@@ -1,0 +1,46 @@
+# Chart color themes, by response polarity.
+#
+# Only positive and negative responses carry hue. Neutral and nonresponse are grays
+# told apart by lightness, and nonresponse lines are thinner and dashed. Each list
+# is [first, second]: a second response with the same polarity gets the second
+# shade (table 28 has both "don't know" and "no answer").
+#
+# Every positive and negative first shade must reach 3:1 contrast on white
+# (WCAG 1.4.11, non-text contrast); tests enforce it.
+
+[defaults]
+neutral = ["#7a7a7a", "#a3a3a3"]
+nonresponse = ["#bdbdbd", "#d6d6d6"]
+# Light-gray text is too faint, so nonresponse labels use a darker gray.
+nonresponse_label = "#8c8c8c"
+index = "#2b2b2b"
+
+[themes.okabe-ito]
+description = "Blue and vermillion from Okabe and Ito's colorblind-safe palette"
+source = "https://jfly.uni-koeln.de/color/"
+positive = ["#0072B2", "#56B4E9"]
+negative = ["#D55E00", "#E69F00"]
+
+[themes.puor]
+description = "Purple and orange ends of ColorBrewer's PuOr diverging scheme"
+source = "https://colorbrewer2.org/#type=diverging&scheme=PuOr&n=5"
+positive = ["#5e3c99", "#b2abd2"]
+negative = ["#e66101", "#fdb863"]
+
+[themes.brbg]
+description = "Teal and brown ends of ColorBrewer's BrBG diverging scheme"
+source = "https://colorbrewer2.org/#type=diverging&scheme=BrBG&n=5"
+positive = ["#018571", "#80cdc1"]
+negative = ["#a6611a", "#dfc27d"]
+
+[themes.rdbu]
+description = "Blue and red ends of ColorBrewer's RdBu diverging scheme; can read as partisan"
+source = "https://colorbrewer2.org/#type=diverging&scheme=RdBu&n=5"
+positive = ["#0571b0", "#92c5de"]
+negative = ["#ca0020", "#f4a582"]
+
+[themes.tol]
+description = "Blue and red from Paul Tol's colorblind-safe vibrant scheme"
+source = "https://personal.sron.nl/~pault/"
+positive = ["#0077BB", "#33BBEE"]
+negative = ["#CC3311", "#EE7733"]

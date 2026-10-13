@@ -403,6 +403,12 @@ def chart_cmd(
     end: EndOpt = None,
     width: Annotated[int | None, typer.Option('--width', help='Static width in px.')] = None,
     height: Annotated[int | None, typer.Option('--height', help='Static height in px.')] = None,
+    theme: Annotated[
+        str | None,
+        typer.Option(
+            '--theme', '-t', help='Color theme name or .toml file. See `betteroff themes`.'
+        ),
+    ] = None,
     refresh: RefreshOpt = False,
     offline: OfflineOpt = False,
     open_: Annotated[bool, typer.Option('--open', help='Open the result in a browser.')] = False,
@@ -423,10 +429,12 @@ def chart_cmd(
         save_chart,
     )
     from .export import check_writable, resolve_format, sidecar, sidecar_path, write_sidecar
+    from .themes import load_theme
 
     _configure(quiet)
     require_altair()
     q = load_catalog().resolve(question)
+    chosen_theme = load_theme(theme)
     if output is None:
         chosen = resolve_format(None, fmt, CHART_FORMATS, chart_format, 'html')
         output = Path(f'{q.id}.{chosen}')
@@ -445,6 +453,7 @@ def chart_cmd(
         width=width,
         height=height,
         container=chosen == 'html' and width is None,
+        theme=chosen_theme,
     )
     save_chart(chart, output, chosen)
     details: dict[str, Any] = {
@@ -455,6 +464,7 @@ def chart_cmd(
             'recessions': recessions,
             'start': start,
             'end': end,
+            'theme': chosen_theme.record(),
         },
     }
     if recessions:
@@ -469,6 +479,40 @@ def chart_cmd(
         import webbrowser
 
         webbrowser.open(output.resolve().as_uri())
+
+
+@app.command('themes')
+def themes_cmd() -> None:
+    """List chart color themes with swatches. Works offline.
+
+    Example: betteroff chart 34 --theme brbg
+    """
+    from .themes import DEFAULT_THEME, list_themes
+
+    available = list_themes()
+    if not out.is_terminal:
+        for th in available:
+            sys.stdout.write(
+                f'{th.name}\t{th.colors["positive"][0]}\t{th.colors["negative"][0]}\t'
+                f'{th.description}\n'
+            )
+        return
+    table = Table(box=None, pad_edge=False, header_style='bold')
+    table.add_column('Theme', style='cyan', no_wrap=True)
+    table.add_column('Colors', no_wrap=True)
+    table.add_column('Description')
+    for th in available:
+        swatch = ' '.join(
+            f'[on {th.colors[p][0]}]{" " * 4}[/]'
+            for p in ('positive', 'neutral', 'negative', 'nonresponse')
+        )
+        name = f'{th.name} (default)' if th.name == DEFAULT_THEME else th.name
+        table.add_row(name, swatch, escape(th.description))
+    out.print(table)
+    err.print(
+        '[dim]Colors: positive, neutral, negative, nonresponse. '
+        'Use one with `betteroff chart ID --theme NAME`, or pass a .toml file.[/dim]'
+    )
 
 
 @app.command('run')

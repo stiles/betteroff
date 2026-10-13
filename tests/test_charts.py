@@ -7,7 +7,6 @@ import pytest
 from betteroff.catalog import load_catalog
 from betteroff.charts import (
     LINE_INVALID_MODE,
-    PALETTE,
     _dodge,
     build_chart,
     monthly,
@@ -19,6 +18,7 @@ from betteroff.charts import (
 )
 from betteroff.errors import InputError
 from betteroff.models import Dataset
+from betteroff.themes import DEFAULT_THEME, list_themes, load_theme
 
 alt = pytest.importorskip('altair')
 
@@ -121,9 +121,55 @@ def test_spec_colors_follow_polarity_across_tables():
         return dict(zip(s['domain'], s['range'], strict=True))
 
     gov, finances = scale('government_policy'), scale('current_finances')
-    assert gov['Good job'] == finances['Better off'] == PALETTE['positive'][0]
-    assert gov['Poor job'] == finances['Worse off'] == PALETTE['negative'][0]
-    assert gov['Only fair'] == finances['Same'] == PALETTE['neutral'][0]
+    palette = load_theme().colors
+    assert gov['Good job'] == finances['Better off'] == palette['positive'][0]
+    assert gov['Poor job'] == finances['Worse off'] == palette['negative'][0]
+    assert gov['Only fair'] == finances['Same'] == palette['neutral'][0]
+
+
+def test_nonresponse_lines_are_dashed():
+    spec = build_chart(make_ds('business_conditions_12_months')).to_dict()
+    line = [la for la in layers_of(spec) if mark_type(la) == 'line'][-1]
+    dash = line['encoding']['strokeDash']['scale']
+    styles = dict(zip(dash['domain'], dash['range'], strict=True))
+    assert styles['Good times'] == [1, 0]
+    assert styles["Don't know"] != [1, 0] and styles['No answer'] != styles["Don't know"]
+
+
+def _contrast(hex_color):
+    def channel(c):
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (channel(int(hex_color[i : i + 2], 16) / 255) for i in (1, 3, 5))
+    return 1.05 / (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.05)
+
+
+@pytest.mark.parametrize('theme', list_themes(), ids=lambda t: t.name)
+def test_packaged_themes_are_legible(theme):
+    for polarity in ('positive', 'negative'):
+        assert _contrast(theme.colors[polarity][0]) >= 3, (theme.name, polarity)
+    assert theme.colors['positive'][0] != theme.colors['negative'][0]
+    assert theme.source.startswith('https://')
+
+
+def test_unknown_theme():
+    assert load_theme().name == DEFAULT_THEME == 'okabe-ito'
+    with pytest.raises(InputError, match='Unknown theme'):
+        load_theme('neon')
+    with pytest.raises(InputError, match='not found'):
+        load_theme('missing.toml')
+
+
+def test_theme_from_file(tmp_path):
+    path = tmp_path / 'house.toml'
+    path.write_text('positive = ["#123456"]\nnegative = ["#654321"]\n')
+    theme = load_theme(str(path))
+    assert theme.name == 'house'
+    assert theme.colors['positive'] == ('#123456',)
+    assert theme.colors['neutral'] == load_theme().colors['neutral']
+    spec = build_chart(make_ds(), theme=str(path)).to_dict()
+    line = [la for la in layers_of(spec) if mark_type(la) == 'line'][-1]
+    assert '#123456' in line['encoding']['color']['scale']['range']
 
 
 def test_same_polarity_gets_distinct_shades():

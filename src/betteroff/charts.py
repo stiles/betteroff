@@ -22,6 +22,7 @@ import pandas as pd
 
 from .catalog import Question, load_catalog
 from .errors import InputError, MissingDependencyError
+from .themes import Theme, load_theme
 
 if TYPE_CHECKING:
     import altair as alt
@@ -35,15 +36,9 @@ TEXT_COLOR = '#222222'
 MUTED = '#666666'
 GRID = '#e2e2e2'
 RECESSION_FILL = '#ececec'
-INDEX_COLOR = '#2b2b2b'
-# Blue/orange is a colorblind-safe pair; a second response with the same polarity
-# gets the lighter shade.
-PALETTE = {
-    'positive': ['#1f5fa6', '#6fa8dc'],
-    'negative': ['#d4621a', '#f2a66b'],
-    'neutral': ['#8576b5', '#b7aed8'],
-    'nonresponse': ['#9e9e9e', '#c6c6c6'],
-}
+NONRESPONSE_DASHES = [[4, 3], [2, 2]]
+NONRESPONSE_WIDTH = 1.5
+LINE_WIDTH = 2.25
 STATIC_WIDTH, STATIC_HEIGHT = 960, 540
 MAX_DIRECT_LABELS = 4
 LINE_INVALID_MODE = 'break-paths-show-domains'
@@ -71,14 +66,33 @@ def recession_dates() -> tuple[tuple[date, date], ...]:
     return tuple((date.fromisoformat(r['peak']), date.fromisoformat(r['trough'])) for r in rows)
 
 
-def response_colors(question: Question) -> dict[str, str]:
+def _shades(question: Question, colors: dict[str, tuple[str, ...]]) -> dict[str, str]:
     used: dict[str, int] = {}
-    colors = {}
+    out = {}
     for r in question.responses:
-        shades = PALETTE[r.polarity]
-        colors[r.id] = shades[min(used.get(r.polarity, 0), len(shades) - 1)]
+        shades = colors[r.polarity]
+        out[r.id] = shades[min(used.get(r.polarity, 0), len(shades) - 1)]
         used[r.polarity] = used.get(r.polarity, 0) + 1
-    return colors
+    return out
+
+
+def response_colors(question: Question, theme: str | Path | Theme | None = None) -> dict[str, str]:
+    return _shades(question, load_theme(theme).colors)
+
+
+def _line_styles(question: Question) -> tuple[dict[str, list[int]], dict[str, float]]:
+    dashes: dict[str, list[int]] = {}
+    widths: dict[str, float] = {}
+    n = 0
+    for r in question.responses:
+        if r.polarity == 'nonresponse':
+            dashes[r.id] = NONRESPONSE_DASHES[min(n, len(NONRESPONSE_DASHES) - 1)]
+            widths[r.id] = NONRESPONSE_WIDTH
+            n += 1
+        else:
+            dashes[r.id] = [1, 0]
+            widths[r.id] = LINE_WIDTH
+    return dashes, widths
 
 
 def monthly(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
@@ -209,27 +223,35 @@ def build_chart(
     width: int | None = None,
     height: int | None = None,
     container: bool = False,
+    theme: str | Path | Theme | None = None,
 ) -> alt.LayerChart:
     """Build the standard exploratory chart.
 
     `width` and `height` set the whole frame (default 960x540, 16:9); `container`
-    makes the chart fill its HTML container's width instead.
+    makes the chart fill its HTML container's width instead. `theme` is a packaged
+    theme name, a path to a theme TOML file or a `Theme`.
     """
     alt = require_altair()
     catalog = load_catalog()
     q = dataset.question
+    th = load_theme(theme)
     prep = prepare(dataset, rolling, start, end)
     is_index = dataset.measure == 'index'
     columns = prep.columns
 
     if is_index:
         labels = {'index': catalog.index_label}
-        colors = {'index': INDEX_COLOR}
+        colors = {'index': th.index}
+        label_colors = colors
+        dashes: dict[str, list[int]] = {'index': [1, 0]}
+        widths: dict[str, float] = {'index': LINE_WIDTH}
         domain, ticks = [0, 200], [0, 50, 100, 150, 200]
         unit_suffix = ''
     else:
         labels = {r.id: r.label for r in q.responses}
-        colors = response_colors(q)
+        colors = _shades(q, th.colors)
+        label_colors = _shades(q, {**th.colors, 'nonresponse': (th.nonresponse_label,)})
+        dashes, widths = _line_styles(q)
         domain, ticks = [0, 100], [0, 25, 50, 75, 100]
         unit_suffix = ' (%)'
 
@@ -297,6 +319,22 @@ def build_chart(
             symbolStrokeWidth=3,
         ),
     )
+    dash = alt.StrokeDash(
+        'label:N',
+        scale=alt.Scale(domain=color_domain, range=[dashes[c] for c in columns]),
+        # Same field as color, so Vega-Lite merges them into one legend
+        legend=None if direct_labels or is_index else alt.Legend(orient='top', title=None),
+    )
+    stroke_width = alt.StrokeWidth(
+        'label:N',
+        scale=alt.Scale(domain=color_domain, range=[widths[c] for c in columns]),
+        legend=None,
+    )
+    label_color = alt.Color(
+        'label:N',
+        scale=alt.Scale(domain=color_domain, range=[label_colors[c] for c in columns]),
+        legend=None,
+    )
 
     layers: list[Any] = []
 
@@ -344,12 +382,14 @@ def build_chart(
         layers.append(
             alt.Chart(raw_long)
             .mark_line(strokeWidth=1, opacity=0.35, invalid=LINE_INVALID_MODE)
-            .encode(x=x, y=y, color=color, detail='segment:N')
+            .encode(x=x, y=y, color=color, strokeDash=dash, detail='segment:N')
         )
     layers.append(
         alt.Chart(main_long)
-        .mark_line(strokeWidth=2.25, invalid=LINE_INVALID_MODE)
-        .encode(x=x, y=y, color=color, detail='segment:N')
+        .mark_line(invalid=LINE_INVALID_MODE)
+        .encode(
+            x=x, y=y, color=color, strokeDash=dash, strokeWidth=stroke_width, detail='segment:N'
+        )
     )
 
     iso = _long(_isolated(prep.main, columns), columns, labels, q).dropna(subset=['value'])
@@ -421,7 +461,7 @@ def build_chart(
                 .mark_text(
                     align='left', baseline='middle', dx=6, font=FONT, fontSize=12, fontWeight='bold'
                 )
-                .encode(x=x, y=y, text='label:N', color=color)
+                .encode(x=x, y=y, text='label:N', color=label_color)
             )
 
     meta = dataset.metadata

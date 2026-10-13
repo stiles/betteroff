@@ -4,6 +4,7 @@
 betteroff chart government_policy
 betteroff chart 34 --rolling 12 --recessions -o gov.svg
 betteroff chart 34 --measure index --start 2000 -o gov_index.png
+betteroff chart 34 --theme brbg
 ```
 
 Charts are for checking and exploring the data. They make no editorial claims, and they still need a human edit before publication.
@@ -12,7 +13,7 @@ One function, `betteroff.charts.build_chart`, makes every chart. The CLI, `Datas
 
 ## What you get
 
-- One line per response, in catalog order. Colors follow polarity, so the favorable answer is the same blue and the unfavorable answer the same orange on every table. Neutral answers are purple and nonresponse gray. When two responses share a polarity, as with "don't know" and "no answer" in table 28, the second gets a lighter shade.
+- One line per response, in catalog order. Colors follow polarity, so the favorable answer has the same color on every table, and so does the unfavorable one. Neutral answers are a mid gray; nonresponse is a thinner, dashed light gray. See [Color themes](#color-themes).
 - Labels at each line's last value, nudged apart when they'd collide. Tables with more than four responses get a legend instead.
 - One tooltip per month: hover anywhere to see every response's value that month. With `--rolling`, it shows both the average and the monthly value.
 - Shares on a 0 to 100 axis, with a percent sign on the top label only. The index score uses 0 to 200 with a reference line at 100.
@@ -36,6 +37,47 @@ The mean is computed on the full history and then trimmed to the displayed range
 
 `--recessions` shades NBER recessions from the peak month to the trough month, using a list packaged with Betteroff (`src/betteroff/data/recessions.csv`, checked against NBER on October 12, 2026). Bands are clipped to the displayed range. The footer credits NBER, and the sidecar records the list's source and check date. A test pins the list, so an update has to be deliberate.
 
+## Color themes
+
+Only the favorable and unfavorable responses get hue. Neutral answers ("same," "only fair," "uncertain") are a mid gray and nonresponse a light gray, so the two sides read first. Nonresponse lines are also thinner and dashed, and their labels use a darker gray so they stay readable. When two responses share a polarity, as with "don't know" and "no answer" in table 28, the second gets a lighter shade and a different dash.
+
+Themes only change the two end colors. Run `betteroff themes` to see them with swatches:
+
+| Theme | Favorable | Unfavorable | Notes |
+| --- | --- | --- | --- |
+| `okabe-ito` (default) | `#0072B2` blue | `#D55E00` vermillion | [Okabe and Ito](https://jfly.uni-koeln.de/color/)'s colorblind-safe palette; the two ends carry similar weight |
+| `puor` | `#5e3c99` purple | `#e66101` orange | [ColorBrewer](https://colorbrewer2.org/) PuOr; the dark purple outweighs the orange |
+| `brbg` | `#018571` teal | `#a6611a` brown | ColorBrewer BrBG; equally dark ends and no "red means bad" cue |
+| `rdbu` | `#0571b0` blue | `#ca0020` red | ColorBrewer RdBu; the strongest good/bad cue, but can read as partisan, as on table 34 |
+| `tol` | `#0077BB` blue | `#CC3311` red | [Paul Tol](https://personal.sron.nl/~pault/)'s vibrant scheme |
+
+Every packaged theme comes from a published colorblind-safe palette, and a test checks that both end colors reach 3:1 contrast on white, the WCAG minimum for lines and other graphics. The sidecar records the theme's name and colors.
+
+```bash
+betteroff chart 34 --theme brbg
+betteroff chart 34 --theme ./house.toml
+```
+
+In Python, `ds.chart(theme='brbg')`; in a recipe, `theme = 'brbg'`.
+
+### Your own theme
+
+A theme file sets the same keys as a packaged theme. Only `positive` and `negative` are required; anything left out uses the shared grays. Each color key is a list: the first shade, then one for a second response with the same polarity.
+
+```toml
+# house.toml
+description = 'Our newsroom colors'
+positive = ['#2a6f97', '#89c2d9']
+negative = ['#bc4b51', '#f4a259']
+# Optional overrides:
+# neutral = ['#7a7a7a', '#a3a3a3']
+# nonresponse = ['#bdbdbd', '#d6d6d6']
+# nonresponse_label = '#8c8c8c'
+# index = '#2b2b2b'   # line color for --measure index
+```
+
+The file name, without `.toml`, becomes the theme's name. In a recipe, a relative path resolves against the recipe's folder.
+
 ## Formats and size
 
 | Extension | Output |
@@ -54,4 +96,4 @@ Charts ask for Roboto, then Helvetica, Arial and any sans-serif. HTML uses whate
 
 ## Style
 
-There's one neutral style. It's set on the chart's own marks and axes rather than through a global Altair theme, so importing Betteroff in a notebook doesn't restyle your other charts.
+Styling is set on the chart's own marks and axes rather than through a global Altair theme, so importing Betteroff in a notebook doesn't restyle your other charts. Color themes change only line colors; fonts, sizes and gridlines are the same for every theme.

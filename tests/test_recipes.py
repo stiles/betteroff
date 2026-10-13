@@ -81,3 +81,23 @@ def test_recipe_errors(tmp_path, text, message):
 def test_relative_output_dir(tmp_path):
     recipe = load_recipe(write(tmp_path, RECIPE))
     assert recipe.output_dir == (tmp_path / 'output').resolve()
+
+
+def test_theme_names_and_relative_files(tmp_path):
+    (tmp_path / 'house.toml').write_text('positive = ["#123456"]\nnegative = ["#654321"]\n')
+    text = (
+        'schema_version = 1\n'
+        '[[jobs]]\nquestion = "34"\nchart_formats = ["html"]\ntheme = "brbg"\n'
+        '[[jobs]]\nquestion = "30"\nchart_formats = ["html"]\ntheme = "house.toml"\n'
+        '[[jobs]]\nquestion = "6"\nchart_formats = ["html"]\n'
+    )
+    jobs = load_recipe(write(tmp_path, text)).jobs
+    assert [j.theme.name for j in jobs] == ['brbg', 'house', 'okabe-ito']
+
+
+def test_unknown_theme_in_recipe(tmp_path):
+    text = (
+        'schema_version = 1\n[[jobs]]\nquestion = "34"\nchart_formats = ["html"]\ntheme = "neon"\n'
+    )
+    with pytest.raises(InputError, match='Unknown theme'):
+        load_recipe(write(tmp_path, text))

@@ -12,6 +12,7 @@ from typing import Any
 
 from . import __version__
 from .errors import InputError
+from .themes import Theme, load_theme
 
 log = logging.getLogger('betteroff')
 RECIPE_SCHEMA_VERSION = 1
@@ -30,6 +31,7 @@ JOB_KEYS = {
     'recessions',
     'width',
     'height',
+    'theme',
 }
 TOP_KEYS = {'schema_version', 'output_dir', 'jobs'}
 
@@ -49,6 +51,7 @@ class Job:
     recessions: bool = False
     width: int | None = None
     height: int | None = None
+    theme: Theme | None = None
 
 
 @dataclass
@@ -126,6 +129,7 @@ def load_recipe(path: Path) -> Recipe:
                 recessions=bool(j.get('recessions', False)),
                 width=j.get('width'),
                 height=j.get('height'),
+                theme=load_theme(j.get('theme'), base=base),
             )
         )
     return Recipe(path=path.resolve(), output_dir=output_dir, jobs=jobs)
@@ -170,13 +174,19 @@ def run_recipe(path: Path, refresh: bool = False, offline: bool = False) -> list
                 recessions=job.recessions,
                 width=job.width,
                 height=job.height,
+                theme=job.theme,
             )
             for fmt in job.chart_formats:
                 out = recipe.output_dir / f'{job.name}.{fmt}'
                 save_chart(chart, out, fmt)
                 details: dict[str, Any] = {
                     'format': fmt,
-                    'chart': {'rolling': job.rolling, 'raw': job.raw, 'recessions': job.recessions},
+                    'chart': {
+                        'rolling': job.rolling,
+                        'raw': job.raw,
+                        'recessions': job.recessions,
+                        'theme': job.theme.record() if job.theme else None,
+                    },
                 }
                 if job.recessions:
                     details['chart']['recession_dates'] = {

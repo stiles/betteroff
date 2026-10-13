@@ -4,6 +4,10 @@ All notable changes to Betteroff. Versions follow [semantic versioning](https://
 
 ## [Unreleased]
 
+- Color themes for charts: `okabe-ito` (new default), `puor`, `brbg`, `rdbu` and `tol`, or your own TOML file. Choose one with `chart --theme`, `theme =` in recipes or `ds.chart(theme=...)`; `betteroff themes` lists them with swatches.
+- Neutral responses are now a mid gray instead of purple, and nonresponse lines are thinner and dashed, so the favorable and unfavorable lines stand out.
+- Chart sidecars record the theme name and colors.
+
 ## [0.1.0] - 2026-10-12
 
 First release.
