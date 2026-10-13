@@ -4,6 +4,8 @@ All notable changes to Betteroff. Versions follow [semantic versioning](https://
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-13
+
 - Headline indexes: the Index of Consumer Sentiment (`ICS`, `consumer_sentiment`), Index of Current Economic Conditions (`ICC`, `current_conditions`) and Index of Consumer Expectations (`ICE`, `consumer_expectations`), from the CSV files on Michigan's main site. They aren't embargoed, so they include the latest final reading and the mid-month preliminary one.
 - Index data has a `preliminary` column, and sidecars give `source.release_status` and `coverage.latest_preliminary`. Charts mark a preliminary latest month with an open dot and a subtitle note. When the final reading arrives, the revision report lists the month under `finalized` with both values instead of warning about a revision.
 - `chart --responses` draws only the responses you name, by id or by polarity (`positive,negative`), in charts, recipes (`responses =`) and `ds.chart(responses=...)`. The subtitle lists what's left out, and colors don't change.
