@@ -1,0 +1,270 @@
+# Betteroff catalog of supported Surveys of Consumers tables.
+#
+# Every entry was checked against Michigan's historical ("RB") Excel download on
+# 2026-10-12. `source_label` must match the file's column header exactly (after
+# collapsing whitespace); the parser fails if it does not. `wording` is copied
+# verbatim from the file, including the source's own typos and punctuation.
+#
+# Polarity follows Michigan's index score: "positive" responses are added and
+# "negative" responses subtracted. It is not an editorial judgment; for example,
+# expecting interest rates to fall counts as positive.
+
+schema_version = 1
+landing_url = "https://data.sca.isr.umich.edu/tables.php"
+attribution = "University of Michigan, Survey Research Center, Surveys of Consumers"
+agreement_url = "https://data.sca.isr.umich.edu/agreement.php"
+population = "all_households"
+monthly_since = "1978-01-01"
+index_label = "Index score"
+index_definition = "Percent favorable minus percent unfavorable plus 100. Michigan labels it 'Relative' in historical tables."
+
+notes = [
+    "Michigan has surveyed monthly since January 1978. Earlier surveys were irregular, mostly quarterly and conducted in person. A few questions became monthly later; see each question's notes.",
+    "From April to July 2024 the survey moved from telephone to web interviews in stages (25%, 50%, 75%, then all web). Michigan says most measures can be read as a continuous series but advises caution with month-to-month changes during the transition, because method effects vary by question.",
+    "Michigan's detailed-data site updates after an embargo that ends four weeks after each month's final release, so the latest month here trails the headline release.",
+]
+
+[[questions]]
+id = "current_finances"
+table = "6"
+title = "Current financial situation compared with a year ago"
+wording = "We are interested in how people are getting along financially these days. Would you say that you (and your family living there) are better off or worse off financially than you were a year ago?"
+keywords = ["personal finances", "household", "better off", "worse off", "past year"]
+responses = [
+    { id = "better_off", label = "Better off", source_label = "Better Off", polarity = "positive" },
+    { id = "same", label = "Same", source_label = "Same", polarity = "neutral" },
+    { id = "worse_off", label = "Worse off", source_label = "Worse Off", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "expected_finances"
+table = "8"
+title = "Expected change in financial situation in a year"
+wording = "Now looking ahead -- do you think that a year from now you (and your family living there) will be better off financially, or worse off, or just about the same as now?"
+keywords = ["personal finances", "household", "better off", "worse off", "expectations", "next year"]
+responses = [
+    { id = "better_off", label = "Better off", source_label = "Better Off", polarity = "positive" },
+    { id = "same", label = "Same", source_label = "Same", polarity = "neutral" },
+    { id = "worse_off", label = "Worse off", source_label = "Worse Off", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "finances_vs_5_years_ago"
+table = "10"
+title = "Current financial situation compared with 5 years ago"
+wording = "Now thinking back 5 years, would you say you (and your family living there) are better off or worse off financially now than you were 5 years ago?"
+keywords = ["personal finances", "household", "better off", "worse off", "five years", "5 years"]
+notes = [
+    "Before 1972 the question asked about a four-year horizon.",
+    "Asked irregularly until mid-2011 and monthly since July 2011.",
+]
+monthly_since = "2011-07-01"
+breaks = [{ date = "1972-01-01", label = "5-year horizon", comparable = false }]
+responses = [
+    { id = "better_off", label = "Better off", source_label = "Better Off", polarity = "positive" },
+    { id = "same", label = "Same", source_label = "Same", polarity = "neutral" },
+    { id = "worse_off", label = "Worse off", source_label = "Worse Off", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "expected_finances_5_years"
+table = "11"
+title = "Expected change in financial situation in 5 years"
+wording = "And 5 years from now, do you expect that you (and your family living there) will be better off financially, worse off, or just about the same as now?"
+keywords = ["personal finances", "household", "better off", "worse off", "expectations", "five years", "5 years"]
+notes = [
+    "Before 1972 the question asked about a four-year horizon.",
+    "Asked irregularly until mid-2011 and monthly since July 2011.",
+]
+monthly_since = "2011-07-01"
+breaks = [{ date = "1972-01-01", label = "5-year horizon", comparable = false }]
+responses = [
+    { id = "better_off", label = "Better off", source_label = "Better Off", polarity = "positive" },
+    { id = "same", label = "Same", source_label = "Same", polarity = "neutral" },
+    { id = "worse_off", label = "Worse off", source_label = "Worse Off", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "real_income_expectations"
+table = "14"
+title = "Expected change in real household income during the next year"
+wording = "During the next year or two -- do you expect that your (family) income will go up more than prices will go up, about the same, or less than prices will go up?"
+keywords = ["income", "inflation", "prices", "real income", "wages", "purchasing power"]
+responses = [
+    { id = "income_more", label = "Income up more than prices", source_label = "Income Up More", polarity = "positive" },
+    { id = "same", label = "About the same", source_label = "Income Up Same", polarity = "neutral" },
+    { id = "prices_more", label = "Prices up more than income", source_label = "Prices Up More", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "retirement_chances"
+table = "19"
+title = "Change in likelihood of comfortable retirement"
+wording = "Compared with 5 years ago, do you think the chances that you (and your husband/wife) will have a comfortable reitrement have gone up, gone down, or remained about the same"
+keywords = ["retirement", "savings", "pension", "five years"]
+responses = [
+    { id = "gone_up", label = "Gone up", source_label = "Gone Up", polarity = "positive" },
+    { id = "same", label = "Same", source_label = "Same", polarity = "neutral" },
+    { id = "gone_down", label = "Gone down", source_label = "Gone Down", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK,NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "business_conditions_vs_year_ago"
+table = "25"
+title = "Current business conditions compared with a year ago"
+wording = "Would you say that at the present time business conditions are better or worse than they were a year ago?"
+keywords = ["economy", "business conditions", "past year"]
+responses = [
+    { id = "better", label = "Better", source_label = "Better Off", polarity = "positive" },
+    { id = "same", label = "Same", source_label = "Same", polarity = "neutral" },
+    { id = "worse", label = "Worse", source_label = "Worse Off", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "business_conditions_expected"
+table = "26"
+title = "Expected change in business conditions in a year"
+wording = "And how about a year from now, do you expect that in the country as a whole business conditions will be better, or worse than they are at present, or just about the same?"
+keywords = ["economy", "business conditions", "expectations", "next year"]
+responses = [
+    { id = "better", label = "Better", source_label = "Better", polarity = "positive" },
+    { id = "same", label = "Same", source_label = "Same", polarity = "neutral" },
+    { id = "worse", label = "Worse", source_label = "Worse", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "business_conditions_12_months"
+table = "28"
+title = "Business conditions expected during the next year"
+wording = "Now turning to business conditions in the country as a whole -- do you think that during the next 12 months we'll have good times financially, or bad times or what?"
+keywords = ["economy", "business conditions", "good times", "bad times", "recession", "next year", "12 months"]
+responses = [
+    { id = "good_times", label = "Good times", source_label = "Good Times", polarity = "positive" },
+    { id = "uncertain", label = "Uncertain", source_label = "Uncertain", polarity = "neutral" },
+    { id = "bad_times", label = "Bad times", source_label = "Bad Times", polarity = "negative" },
+    { id = "dk", label = "Don't know", source_label = "DK", polarity = "nonresponse" },
+    { id = "na", label = "No answer", source_label = "NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "business_conditions_5_years"
+table = "29"
+title = "Business conditions expected during the next 5 years"
+wording = "Looking ahead, which would you say is more likely -- that in the country as a whole we'll have continuous good times during the next 5 years or so, or that we will have periods of widespread unemployment or depression, or what?"
+keywords = ["economy", "business conditions", "good times", "bad times", "depression", "unemployment", "five years", "5 years"]
+responses = [
+    { id = "good_times", label = "Good times", source_label = "Good Times", polarity = "positive" },
+    { id = "uncertain", label = "Uncertain", source_label = "Uncertain", polarity = "neutral" },
+    { id = "bad_times", label = "Bad times", source_label = "Bad Times", polarity = "negative" },
+    { id = "na", label = "No answer", source_label = "NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "unemployment_expectations"
+table = "30"
+title = "Expected change in unemployment during the next year"
+wording = "How about people out of work during the coming 12 months -- do you think that there will be more unemployment than now, about the same, or less?"
+keywords = ["jobs", "unemployment", "labor market", "employment", "next year"]
+responses = [
+    { id = "less", label = "Less unemployment", source_label = "Less", polarity = "positive" },
+    { id = "same", label = "Same", source_label = "Same", polarity = "neutral" },
+    { id = "more", label = "More unemployment", source_label = "More", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "interest_rate_expectations"
+table = "31"
+title = "Expected change in interest rates during the next year"
+wording = "No one can say for sure, but what do you think will happen to interest rates for borrowing money during the next 12 months -- will they go up, stay the same, or go down?"
+keywords = ["interest rates", "borrowing", "fed", "federal reserve", "credit", "next year"]
+responses = [
+    { id = "go_up", label = "Go up", source_label = "Go Up", polarity = "negative" },
+    { id = "same", label = "Same", source_label = "Same", polarity = "neutral" },
+    { id = "go_down", label = "Go down", source_label = "Go Down", polarity = "positive" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "government_policy"
+table = "34"
+title = "Opinions about the government's economic policy"
+wording = "As to the economic policy of the government -- I mean steps taken to fight inflation or unemployment – would you say the government is doing a good job, only fair, or a poor job?"
+keywords = ["government", "policy", "economic policy", "administration", "inflation", "unemployment", "approval"]
+responses = [
+    { id = "good_job", label = "Good job", source_label = "Good Job", polarity = "positive" },
+    { id = "fair", label = "Only fair", source_label = "Fair", polarity = "neutral" },
+    { id = "poor_job", label = "Poor job", source_label = "Poor Job", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "durables_buying_conditions"
+table = "35"
+title = "Buying conditions for large household durables"
+wording = "About the big things people buy for their homes -- such as furniture, a refrigerator, stove, television, and things like that. Generally speaking, do you think now is a good time or a bad time for people to buy major household items?"
+keywords = ["durable goods", "appliances", "furniture", "buying conditions", "spending", "household items"]
+responses = [
+    { id = "good_time", label = "Good time", source_label = "Good Time", polarity = "positive" },
+    { id = "uncertain", label = "Uncertain", source_label = "Uncertain", polarity = "neutral" },
+    { id = "bad_time", label = "Bad time", source_label = "Bad Time", polarity = "negative" },
+]
+
+[[questions]]
+id = "vehicle_buying_conditions"
+table = "37"
+title = "Buying conditions for vehicles"
+wording = "Speaking now of the automobile market -- do you think the next 12 months or so will be a good time or a bad time to buy a new vehicle, such as a car, pickup, van, or sport utility vehicle?"
+keywords = ["cars", "autos", "vehicles", "trucks", "buying conditions", "spending"]
+responses = [
+    { id = "good_time", label = "Good time", source_label = "Good Time", polarity = "positive" },
+    { id = "uncertain", label = "Uncertain", source_label = "Uncertain", polarity = "neutral" },
+    { id = "bad_time", label = "Bad time", source_label = "Bad Time", polarity = "negative" },
+]
+
+[[questions]]
+id = "home_buying_conditions"
+table = "41"
+title = "Buying conditions for houses"
+wording = "Generally speaking, do you think now is a good time or a bad time to buy a house?"
+keywords = ["housing", "homes", "real estate", "mortgage", "buying conditions"]
+responses = [
+    { id = "good_time", label = "Good time", source_label = "Good Time", polarity = "positive" },
+    { id = "uncertain", label = "Uncertain", source_label = "Uncertain", polarity = "neutral" },
+    { id = "bad_time", label = "Bad time", source_label = "Bad Time", polarity = "negative" },
+]
+
+[[questions]]
+id = "home_selling_conditions"
+table = "43"
+title = "Selling conditions for houses"
+wording = "Generally speaking, do you think now is a good time or a bad time to sell a house?"
+keywords = ["housing", "homes", "real estate", "selling conditions"]
+responses = [
+    { id = "good_time", label = "Good time", source_label = "Good Time", polarity = "positive" },
+    { id = "uncertain", label = "Uncertain", source_label = "Uncertain", polarity = "neutral" },
+    { id = "bad_time", label = "Bad time", source_label = "Bad Time", polarity = "negative" },
+]
+
+[[questions]]
+id = "home_value_change"
+table = "45"
+title = "Change in home values during the past year"
+wording = "Do you think the current value of your home--I mean, what it would bring if you sold it today--has increased compared with a year ago, has decreased compared with a year ago, or has it remained about the same?"
+keywords = ["housing", "homes", "home prices", "home values", "real estate", "homeowners", "past year"]
+notes = ["Asked irregularly from 1990 to 1992 and monthly since September 1992."]
+monthly_since = "1992-09-01"
+responses = [
+    { id = "increased", label = "Increased", source_label = "Value Increased", polarity = "positive" },
+    { id = "same", label = "Same", source_label = "Value Same", polarity = "neutral" },
+    { id = "decreased", label = "Decreased", source_label = "Value Decreased", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
+]

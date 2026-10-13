@@ -1,0 +1,184 @@
+name: Release
+
+# Two ways to release:
+#   1. Actions > Release > Run workflow, enter a version such as 0.2.0 or 0.2.0rc1.
+#      The workflow tags the current main commit as v<version> and continues.
+#   2. Push a tag yourself: git tag -a v0.2.0 -m "Betteroff 0.2.0" && git push origin v0.2.0
+# Final versions publish to PyPI; a1/b1/rc1 pre-releases publish to TestPyPI.
+# Both use trusted publishing; see docs/releasing.md for the one-time setup.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version without the leading v, e.g. 0.2.0 or 0.2.0rc1'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Work out the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="${INPUT_VERSION#v}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?$'; then
+            echo "::error::'$VERSION' is not a release version like 1.2.3 or 1.2.3rc1"
+            exit 1
+          fi
+          PRERELEASE=false
+          if echo "$VERSION" | grep -Eq '(a|b|rc)[0-9]+$'; then PRERELEASE=true; fi
+          {
+            echo "version=$VERSION"
+            echo "tag=v$VERSION"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+      - name: Require a changelog entry for final releases
+        if: steps.version.outputs.prerelease == 'false'
+        run: |
+          grep -Eq "^## \[?${{ steps.version.outputs.version }}\]?( |$)" CHANGELOG.md || {
+            echo "::error::Add a '## ${{ steps.version.outputs.version }}' section to CHANGELOG.md first"
+            exit 1
+          }
+      - name: Create the tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Run the release workflow from main"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Betteroff ${TAG#v}" "$GITHUB_SHA"
+          git push origin "$TAG"
+
+  test:
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: [prepare, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+      - run: uv build
+      - name: Built version matches the tag
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          ls dist
+          test -f "dist/betteroff-${VERSION}-py3-none-any.whl"
+          test -f "dist/betteroff-${VERSION}.tar.gz"
+      - run: uvx twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    if: needs.prepare.outputs.prerelease == 'true'
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/betteroff/${{ needs.prepare.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    if: needs.prepare.outputs.prerelease == 'false'
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/betteroff/${{ needs.prepare.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: [prepare, publish-testpypi, publish-pypi]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      (needs.publish-pypi.result == 'success' || needs.publish-testpypi.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Release notes from the changelog
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[?" v "\\]?( |$)" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "Pre-release $VERSION." > notes.md; fi
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          FLAGS=""
+          if [ "$PRERELEASE" = "true" ]; then FLAGS="--prerelease"; fi
+          gh release create "$TAG" dist/* --verify-tag --title "Betteroff $VERSION" \
+            --notes-file notes.md $FLAGS

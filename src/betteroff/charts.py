@@ -1,0 +1,537 @@
+"""Exploratory Altair charts built from a validated Dataset.
+
+Data work (calendar reindexing, rolling means, trimming) happens in pandas so the
+chart plots exactly what users can export. Styling is set on marks and axes, not a
+global theme, so importing betteroff never restyles a user's other charts.
+"""
+
+from __future__ import annotations
+
+import csv
+import logging
+import os
+import sys
+from dataclasses import dataclass
+from datetime import date
+from functools import cache
+from importlib import resources
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import pandas as pd
+
+from .catalog import Question, load_catalog
+from .errors import InputError, MissingDependencyError
+
+if TYPE_CHECKING:
+    import altair as alt
+
+    from .models import Dataset
+
+log = logging.getLogger('betteroff')
+
+FONT = 'Roboto, Helvetica, Arial, sans-serif'
+TEXT_COLOR = '#222222'
+MUTED = '#666666'
+GRID = '#e2e2e2'
+RECESSION_FILL = '#ececec'
+INDEX_COLOR = '#2b2b2b'
+# Blue/orange is a colorblind-safe pair; a second response with the same polarity
+# gets the lighter shade.
+PALETTE = {
+    'positive': ['#1f5fa6', '#6fa8dc'],
+    'negative': ['#d4621a', '#f2a66b'],
+    'neutral': ['#8576b5', '#b7aed8'],
+    'nonresponse': ['#9e9e9e', '#c6c6c6'],
+}
+STATIC_WIDTH, STATIC_HEIGHT = 960, 540
+MAX_DIRECT_LABELS = 4
+LINE_INVALID_MODE = 'break-paths-show-domains'
+RECESSIONS_SOURCE = 'NBER Business Cycle Dating Committee'
+RECESSIONS_URL = 'https://www.nber.org/research/data/us-business-cycle-expansions-and-contractions'
+RECESSIONS_CHECKED = '2026-10-12'
+CHART_FORMATS = ('html', 'svg', 'png', 'pdf', 'vl.json')
+
+
+def require_altair() -> Any:
+    try:
+        import altair
+    except ImportError:
+        raise MissingDependencyError(
+            'Charts need the optional chart dependencies (Altair and vl-convert).',
+            "Install with `uv tool install 'betteroff[charts]'` or `uv add 'betteroff[charts]'`.",
+        ) from None
+    return altair
+
+
+@cache
+def recession_dates() -> tuple[tuple[date, date], ...]:
+    text = resources.files('betteroff').joinpath('data/recessions.csv').read_text('utf-8')
+    rows = csv.DictReader(text.splitlines())
+    return tuple((date.fromisoformat(r['peak']), date.fromisoformat(r['trough'])) for r in rows)
+
+
+def response_colors(question: Question) -> dict[str, str]:
+    used: dict[str, int] = {}
+    colors = {}
+    for r in question.responses:
+        shades = PALETTE[r.polarity]
+        colors[r.id] = shades[min(used.get(r.polarity, 0), len(shades) - 1)]
+        used[r.polarity] = used.get(r.polarity, 0) + 1
+    return colors
+
+
+def monthly(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Reindex to every calendar month so gaps are explicit nulls."""
+    idx = pd.date_range(frame['date'].min(), frame['date'].max(), freq='MS', name='date')
+    return frame.set_index('date')[columns].reindex(idx).reset_index()
+
+
+def trailing_mean(wide: pd.DataFrame, columns: list[str], window: int) -> pd.DataFrame:
+    """Trailing mean of `window` consecutive calendar months, requiring all of them."""
+    out = wide.copy()
+    out[columns] = wide[columns].rolling(window, min_periods=window).mean()
+    return out
+
+
+@dataclass
+class Prepared:
+    main: pd.DataFrame  # values to draw as lines (smoothed when rolling)
+    raw: pd.DataFrame | None  # monthly values behind a rolling average
+    columns: list[str]
+    start: pd.Timestamp
+    end: pd.Timestamp
+
+
+def prepare(
+    dataset: Dataset,
+    rolling: int | None = None,
+    start: str | date | None = None,
+    end: str | date | None = None,
+) -> Prepared:
+    """Reindex, smooth over full history, then trim to the displayed range."""
+    from .models import parse_date
+
+    if rolling is not None and rolling < 2:
+        raise InputError('--rolling must be at least 2 months.', 'Try --rolling 3 or --rolling 12.')
+    columns = dataset.value_columns
+    full = monthly(dataset.frame, columns)
+    main = trailing_mean(full, columns, rolling) if rolling else full
+
+    first, last = full['date'].min(), full['date'].max()
+    start_d = parse_date(start, 'start') or dataset.start
+    end_d = parse_date(end, 'end') or dataset.end
+    if start_d is None:
+        monthly_since = dataset.question.monthly_since or load_catalog().monthly_since
+        start_d = max(first.date(), monthly_since)
+    lo = max(pd.Timestamp(start_d), first)
+    hi = min(pd.Timestamp(end_d), last) if end_d else last
+    if lo > hi:
+        raise InputError(
+            f'No data between {lo:%Y-%m} and {hi:%Y-%m}.',
+            f'This series covers {first:%Y-%m} to {last:%Y-%m}.',
+        )
+
+    def trim(f: pd.DataFrame) -> pd.DataFrame:
+        return f[(f['date'] >= lo) & (f['date'] <= hi)].reset_index(drop=True)
+
+    return Prepared(
+        main=trim(main),
+        raw=trim(full) if rolling else None,
+        columns=columns,
+        start=lo,
+        end=hi,
+    )
+
+
+def _segments(dates: pd.Series, question: Question) -> pd.Series:
+    seg = pd.Series(0, index=dates.index)
+    for b in question.breaks:
+        if not b.comparable:
+            seg += (dates >= pd.Timestamp(b.date)).astype(int)
+    return seg
+
+
+def _long(
+    wide: pd.DataFrame, columns: list[str], labels: dict[str, str], q: Question
+) -> pd.DataFrame:
+    w = wide.assign(segment=_segments(wide['date'], q))
+    long = w.melt(id_vars=['date', 'segment'], value_vars=columns, var_name='response_id')
+    long['label'] = long['response_id'].map(labels)
+    return long
+
+
+def _isolated(wide: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Observations with no neighbor in either adjacent month; lines can't show them."""
+    mask = pd.DataFrame(
+        {c: wide[c].notna() & wide[c].shift(1).isna() & wide[c].shift(-1).isna() for c in columns}
+    )
+    return wide[columns].where(mask).assign(date=wide['date'])
+
+
+def _dodge(values: list[float], gap: float, lo: float, hi: float) -> list[float]:
+    """Spread label positions at least `gap` apart while keeping their order."""
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    pos = [values[i] for i in order]
+    for i in range(1, len(pos)):
+        pos[i] = max(pos[i], pos[i - 1] + gap)
+    if pos and pos[-1] > hi:
+        pos[-1] = hi
+        for i in range(len(pos) - 2, -1, -1):
+            pos[i] = min(pos[i], pos[i + 1] - gap)
+    if pos and pos[0] < lo:
+        pos[0] = lo
+        for i in range(1, len(pos)):
+            pos[i] = max(pos[i], pos[i - 1] + gap)
+    out = [0.0] * len(values)
+    for k, i in enumerate(order):
+        out[i] = pos[k]
+    return out
+
+
+def _month(ts: pd.Timestamp | date) -> str:
+    return f'{ts:%B %Y}'
+
+
+def _day(iso: str) -> str:
+    d = pd.Timestamp(iso)
+    return f'{d:%b} {d.day}, {d.year}'
+
+
+def build_chart(
+    dataset: Dataset,
+    *,
+    rolling: int | None = None,
+    raw: bool = True,
+    recessions: bool = False,
+    start: str | date | None = None,
+    end: str | date | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    container: bool = False,
+) -> alt.LayerChart:
+    """Build the standard exploratory chart.
+
+    `width` and `height` set the whole frame (default 960x540, 16:9); `container`
+    makes the chart fill its HTML container's width instead.
+    """
+    alt = require_altair()
+    catalog = load_catalog()
+    q = dataset.question
+    prep = prepare(dataset, rolling, start, end)
+    is_index = dataset.measure == 'index'
+    columns = prep.columns
+
+    if is_index:
+        labels = {'index': catalog.index_label}
+        colors = {'index': INDEX_COLOR}
+        domain, ticks = [0, 200], [0, 50, 100, 150, 200]
+        unit_suffix = ''
+    else:
+        labels = {r.id: r.label for r in q.responses}
+        colors = response_colors(q)
+        domain, ticks = [0, 100], [0, 25, 50, 75, 100]
+        unit_suffix = ' (%)'
+
+    direct_labels = len(columns) <= MAX_DIRECT_LABELS and not is_index
+    label_space = max(len(labels[c]) for c in columns) * 6.6 + 14 if direct_labels else 10
+    total_w = width or STATIC_WIDTH
+    total_h = height or STATIC_HEIGHT
+    plot_w: Any = 'container' if container else max(int(total_w - 45 - label_space), 200)
+    plot_h = max(int(total_h - 150 - (30 if not direct_labels and not is_index else 0)), 120)
+
+    x_domain = [
+        alt.DateTime(year=prep.start.year, month=prep.start.month, date=1),
+        alt.DateTime(year=prep.end.year, month=prep.end.month, date=1),
+    ]
+    span_years = (prep.end - prep.start).days / 365.25
+    x = alt.X(
+        'date:T',
+        title=None,
+        scale=alt.Scale(domain=x_domain),
+        axis=alt.Axis(
+            format='%Y' if span_years >= 3 else '%b %Y',
+            tickCount=max(int(plot_w / 90), 3) if isinstance(plot_w, int) else 8,
+            grid=False,
+            labelFont=FONT,
+            labelColor=MUTED,
+            labelFontSize=11,
+            tickColor=GRID,
+            domainColor='#bbbbbb',
+            labelOverlap=True,
+        ),
+    )
+    label_expr = (
+        "datum.value == 100 ? datum.label + '%' : datum.label" if not is_index else alt.Undefined
+    )
+    y = alt.Y(
+        'value:Q',
+        title=None,
+        scale=alt.Scale(domain=domain, nice=False, zero=False),
+        axis=alt.Axis(
+            values=ticks,
+            labelExpr=label_expr,
+            grid=True,
+            gridColor=GRID,
+            domain=False,
+            ticks=False,
+            labelFont=FONT,
+            labelColor=MUTED,
+            labelFontSize=11,
+            labelPadding=6,
+        ),
+    )
+    color_domain = [labels[c] for c in columns]
+    color = alt.Color(
+        'label:N',
+        scale=alt.Scale(domain=color_domain, range=[colors[c] for c in columns]),
+        legend=None
+        if direct_labels or is_index
+        else alt.Legend(
+            orient='top',
+            title=None,
+            direction='horizontal',
+            labelFont=FONT,
+            labelColor=TEXT_COLOR,
+            symbolType='stroke',
+            symbolStrokeWidth=3,
+        ),
+    )
+
+    layers: list[Any] = []
+
+    if recessions:
+        bands = [
+            (max(pd.Timestamp(p), prep.start), min(pd.Timestamp(t), prep.end))
+            for p, t in recession_dates()
+            if pd.Timestamp(t) >= prep.start and pd.Timestamp(p) <= prep.end
+        ]
+        if bands:
+            rec = pd.DataFrame(bands, columns=['date', 'end'])
+            layers.append(
+                alt.Chart(rec)
+                .mark_rect(color=RECESSION_FILL, minBandSize=2)
+                .encode(x=x, x2='end:T')
+            )
+
+    if is_index:
+        layers.append(
+            alt.Chart(pd.DataFrame({'value': [100]}))
+            .mark_rule(color='#9a9a9a', strokeWidth=1)
+            .encode(y=y)
+        )
+
+    visible_breaks = [b for b in q.breaks if prep.start < pd.Timestamp(b.date) <= prep.end]
+    if visible_breaks:
+        brk = pd.DataFrame(
+            {
+                'date': [pd.Timestamp(b.date) for b in visible_breaks],
+                'text': [b.label for b in visible_breaks],
+            }
+        )
+        layers.append(
+            alt.Chart(brk).mark_rule(color=MUTED, strokeDash=[4, 3], strokeWidth=1).encode(x=x)
+        )
+        layers.append(
+            alt.Chart(brk)
+            .mark_text(align='left', baseline='top', dx=4, font=FONT, fontSize=10, color=MUTED)
+            .encode(x=x, y=alt.value(2), text='text:N')
+        )
+
+    main_long = _long(prep.main, columns, labels, q)
+    if prep.raw is not None and raw:
+        raw_long = _long(prep.raw, columns, labels, q)
+        layers.append(
+            alt.Chart(raw_long)
+            .mark_line(strokeWidth=1, opacity=0.35, invalid=LINE_INVALID_MODE)
+            .encode(x=x, y=y, color=color, detail='segment:N')
+        )
+    layers.append(
+        alt.Chart(main_long)
+        .mark_line(strokeWidth=2.25, invalid=LINE_INVALID_MODE)
+        .encode(x=x, y=y, color=color, detail='segment:N')
+    )
+
+    iso = _long(_isolated(prep.main, columns), columns, labels, q).dropna(subset=['value'])
+    if not iso.empty:
+        layers.append(
+            alt.Chart(iso)
+            .mark_point(filled=True, size=16, opacity=0.9)
+            .encode(x=x, y=y, color=color)
+        )
+
+    # One tooltip per month: an invisible rule carrying every response's value.
+    tip = prep.main[['date', *columns]].copy()
+    tooltip = [alt.Tooltip('date:T', title='Month', format='%B %Y')]
+    fmt = '.1f' if rolling else '.0f'
+    for c in columns:
+        title = f'{labels[c]}{unit_suffix}'
+        if rolling:
+            title = f'{labels[c]}, {rolling}-mo. avg.{unit_suffix}'
+        tooltip.append(alt.Tooltip(f'{c}:Q', title=title, format=fmt))
+    if prep.raw is not None:
+        for c in columns:
+            tip[f'{c}__monthly'] = prep.raw[c].to_numpy()
+            tooltip.append(
+                alt.Tooltip(
+                    f'{c}__monthly:Q', title=f'{labels[c]}, monthly{unit_suffix}', format='.0f'
+                )
+            )
+    nearest = alt.selection_point(
+        name='hover',
+        nearest=True,
+        on='pointerover',
+        clear='pointerout',
+        fields=['date'],
+        empty=False,
+    )
+    when_near = alt.when(nearest)
+    layers.append(
+        alt.Chart(main_long)
+        .mark_point(filled=True, size=40)
+        .encode(x=x, y=y, color=color)
+        .transform_filter(nearest)
+    )
+    layers.append(
+        alt.Chart(tip)
+        .mark_rule(color='#888888', strokeWidth=1)
+        .encode(
+            x=x,
+            opacity=when_near.then(alt.value(0.6)).otherwise(alt.value(0)),
+            tooltip=tooltip,
+        )
+        .add_params(nearest)
+    )
+
+    if direct_labels:
+        ends = []
+        for c in columns:
+            s = prep.main[['date', c]].dropna()
+            if not s.empty:
+                ends.append(
+                    {'date': s['date'].iloc[-1], 'value': float(s[c].iloc[-1]), 'label': labels[c]}
+                )
+        if ends:
+            gap = (domain[1] - domain[0]) * 13 / plot_h
+            placed = _dodge([e['value'] for e in ends], gap, domain[0], domain[1])
+            for e, p in zip(ends, placed, strict=True):
+                e['latest'], e['value'] = e['value'], p
+            layers.append(
+                alt.Chart(pd.DataFrame(ends))
+                .mark_text(
+                    align='left', baseline='middle', dx=6, font=FONT, fontSize=12, fontWeight='bold'
+                )
+                .encode(x=x, y=y, text='label:N', color=color)
+            )
+
+    meta = dataset.metadata
+    footer = [
+        f'Source: {catalog.attribution}, table {q.table}.'
+        + (' Recession dates: NBER.' if recessions else ''),
+        f'Latest month: {_month(pd.Timestamp(meta["coverage"]["latest_period"] + "-01"))}. '
+        f'Retrieved {_day(meta["snapshot"]["retrieved_at"])}.',
+    ]
+    layers.append(
+        alt.Chart(pd.DataFrame({'text': ['\n'.join(footer)]}))
+        .mark_text(
+            align='left',
+            baseline='top',
+            font=FONT,
+            fontSize=10,
+            color=MUTED,
+            lineBreak='\n',
+            lineHeight=14,
+        )
+        .encode(x=alt.value(0), y=alt.value(plot_h + 30), text='text:N')
+    )
+
+    if is_index:
+        subtitle = [f'{catalog.index_label}: percent favorable minus percent unfavorable, plus 100']
+    else:
+        subtitle = ['Percent of respondents']
+    if rolling:
+        subtitle[0] += f', {rolling}-month trailing average'
+        if raw:
+            subtitle[0] += '; thin lines show monthly values'
+    shown = prep.raw if prep.raw is not None else prep.main
+    if shown[columns].isna().all(axis=1).any():
+        subtitle.append(
+            'Gaps are months without a reading'
+            + ('; dots mark readings with no adjacent month' if not iso.empty else '')
+        )
+
+    chart = alt.layer(*layers).properties(
+        width=plot_w,
+        height=plot_h,
+        title=alt.TitleParams(
+            text=q.title,
+            subtitle=subtitle,
+            anchor='start',
+            frame='group',
+            font=FONT,
+            fontSize=18,
+            fontWeight='bold',
+            color=TEXT_COLOR,
+            subtitleFont=FONT,
+            subtitleFontSize=13,
+            subtitleColor=MUTED,
+            offset=14,
+        ),
+        view=alt.ViewBackground(stroke=None),
+    )
+    return chart
+
+
+def font_dirs() -> list[Path]:
+    home = Path.home()
+    dirs = [
+        home / 'Library/Fonts',
+        Path('/Library/Fonts'),
+        Path('/System/Library/Fonts'),
+        Path('/usr/share/fonts'),
+        Path('/usr/local/share/fonts'),
+        home / '.local/share/fonts',
+        home / '.fonts',
+    ]
+    if sys.platform == 'win32':
+        windir = Path(os.environ.get('WINDIR', 'C:/Windows'))
+        dirs += [windir / 'Fonts', home / 'AppData/Local/Microsoft/Windows/Fonts']
+    return [d for d in dirs if d.is_dir()]
+
+
+@cache
+def has_roboto() -> bool:
+    for d in font_dirs():
+        for _ in d.rglob('Roboto*.[ot]tf'):
+            return True
+    return False
+
+
+def chart_format(path: Path) -> str | None:
+    name = path.name.lower()
+    if name.endswith('.vl.json'):
+        return 'vl.json'
+    suffix = path.suffix.lower().lstrip('.')
+    return suffix if suffix in CHART_FORMATS else None
+
+
+def save_chart(chart: alt.LayerChart, path: Path, fmt: str) -> None:
+    require_altair()
+    if fmt in ('svg', 'png', 'pdf') and not has_roboto():
+        log.info(
+            'Roboto not found; static export uses Helvetica, Arial or another sans-serif font.'
+        )
+    if fmt == 'html':
+        chart.save(str(path), format='html', inline=True)
+    elif fmt == 'vl.json':
+        path.write_text(chart.to_json(indent=2), encoding='utf-8')
+    elif fmt == 'png':
+        chart.save(str(path), format='png', scale_factor=2)
+    elif fmt == 'svg':
+        chart.save(str(path), format='svg')
+    elif fmt == 'pdf':
+        chart.save(str(path), format='pdf')
+    else:
+        raise InputError(
+            f'Unknown chart format "{fmt}".', f'Use one of: {", ".join(CHART_FORMATS)}.'
+        )
