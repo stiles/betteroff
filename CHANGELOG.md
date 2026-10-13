@@ -6,15 +6,17 @@ All notable changes to Betteroff. Versions follow [semantic versioning](https://
 
 - Headline indexes: the Index of Consumer Sentiment (`ICS`, `consumer_sentiment`), Index of Current Economic Conditions (`ICC`, `current_conditions`) and Index of Consumer Expectations (`ICE`, `consumer_expectations`), from the CSV files on Michigan's main site. They aren't embargoed, so they include the latest final reading and the mid-month preliminary one.
 - Index data has a `preliminary` column, and sidecars give `source.release_status` and `coverage.latest_preliminary`. Charts mark a preliminary latest month with an open dot and a subtitle note. When the final reading arrives, the revision report lists the month under `finalized` with both values instead of warning about a revision.
+- `chart --responses` draws only the responses you name, by id or by polarity (`positive,negative`), in charts, recipes (`responses =`) and `ds.chart(responses=...)`. The subtitle lists what's left out, and colors don't change.
+- `--monthly/--no-monthly` replaces `--no-raw` for hiding the thin monthly lines behind a rolling average; the recipe key and Python argument are now `monthly`. The old names still work. Chart sidecars record `monthly` and `responses` instead of `raw`.
 - `--measure` now defaults to `share` for tables and `index` for headline indexes.
 - One-line charts, such as `--measure index` or a single `--responses` choice, now draw at full line width.
 - `cache prune` also removes headline index snapshots, which are stored as `.json`.
+- Cache manifests now record each snapshot's file type. Older versions can't read them, so to go back to 0.3.0 or earlier, delete the cache directory (`betteroff cache path`).
+
 ## [0.3.0] - 2026-10-12
 
 - `betteroff cache prune` deletes older snapshots, keeping the newest per question (`--keep`, default 1) and always the latest; `--dry-run` lists what it would delete.
 - Charts use Inter instead of Roboto, still falling back to Helvetica, Arial and sans-serif. Choose another family with `chart --font`, `font =` in recipes, `ds.chart(font=...)` or the `BETTEROFF_FONT` environment variable. Chart sidecars record the font, and the static-export check now looks for whichever font you chose.
-- `chart --responses` draws only the responses you name, by id or by polarity (`positive,negative`), in charts, recipes (`responses =`) and `ds.chart(responses=...)`. The subtitle lists what's left out, and colors don't change.
-- `--monthly/--no-monthly` replaces `--no-raw` for hiding the thin monthly lines behind a rolling average; the recipe key and Python argument are now `monthly`. The old names still work. Chart sidecars record `monthly` and `responses` instead of `raw`.
 - Direct labels reserve a little more room at the right edge so wider fonts don't crowd it.
 - Processes sharing a cache no longer overwrite each other's manifest updates; writes now take turns through a lock file.
 
