@@ -27,24 +27,34 @@ Do this before the first release.
 
 ## Cutting a release
 
-1. Move the changelog entries from `## Unreleased` into a new `## 0.2.0 (YYYY-MM-DD)` section and merge that to `main`. A final release fails if this section is missing.
-2. Start the release one of two ways:
-   - **From GitHub:** *Actions > Release > Run workflow* on `main` and enter `0.2.0`. The workflow creates and pushes the `v0.2.0` tag on the current `main` commit, then continues.
-   - **From your machine:**
-     ```bash
-     git switch main && git pull
-     git tag -a v0.2.0 -m "Betteroff 0.2.0"
-     git push origin v0.2.0
-     ```
-3. Approve the `pypi` environment if you set up a reviewer.
-4. Check the result:
-   ```bash
-   uvx --refresh betteroff@0.2.0 --version
-   ```
+Add changelog entries under `## [Unreleased]` as you go. Then run:
+
+```bash
+./scripts/publish.sh
+```
+
+It stops at any answer that isn't yes:
+
+1. Checks you're on `main`, the tree is clean and `main` matches `origin/main`.
+2. Asks for the version: patch, minor or major from the latest release tag, or a custom one. The first run offers 0.1.0. It refuses a version whose tag already exists.
+3. Asks whether to cut a release candidate first. Yes tags the next free `rcN`, which goes to TestPyPI and skips the changelog step.
+4. For a final release, moves `[Unreleased]` under `## [X.Y.Z] - YYYY-MM-DD`, shows the notes and asks you to confirm the changelog and docs.
+5. Runs Ruff, mypy, pytest and a build with `twine check`.
+6. Commits `chore(release): vX.Y.Z`, pushes `main`, then creates and pushes the annotated tag.
+7. Watches the release workflow with `gh`, if it's installed.
+
+The script doesn't build for upload or create the GitHub release; the workflow does both from the tag. Approve the `pypi` environment when the run reaches it, if you set up a reviewer.
+
+### Without the script
+
+- **From GitHub:** move the changelog entries under a dated `## [X.Y.Z]` heading and merge to `main`, then *Actions > Release > Run workflow* on `main` with the version. The workflow tags the current `main` commit and continues.
+- **From your machine:** same changelog edit, then `git tag -a vX.Y.Z -m "Betteroff X.Y.Z" && git push origin vX.Y.Z`.
+
+A final release fails if `CHANGELOG.md` has no section for its version.
 
 ## Pre-releases
 
-Tag `v0.2.0rc1` the same way. It publishes to TestPyPI only and the GitHub release is marked as a pre-release. A changelog section isn't required. To try it:
+A tag such as `v0.2.0rc1` publishes to TestPyPI only and the GitHub release is marked as a pre-release. A changelog section isn't required. To try it:
 
 ```bash
 uvx --index https://test.pypi.org/simple/ --index-strategy unsafe-best-match \

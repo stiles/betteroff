@@ -1,10 +1,8 @@
 # Changelog
 
-All notable changes to Betteroff. Versions follow [semantic versioning](https://semver.org/).
+All notable changes to Betteroff. Versions follow [semantic versioning](https://semver.org/). Add entries under Unreleased; `scripts/publish.sh` moves them under a dated version heading when you release.
 
-## Unreleased
-
-## 0.1.0 (unreleased)
+## [Unreleased]
 
 First release.
 
