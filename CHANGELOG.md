@@ -4,6 +4,8 @@ All notable changes to Betteroff. Versions follow [semantic versioning](https://
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-12
+
 - `betteroff cache prune` deletes older snapshots, keeping the newest per question (`--keep`, default 1) and always the latest; `--dry-run` lists what it would delete.
 - Charts use Inter instead of Roboto, still falling back to Helvetica, Arial and sans-serif. Choose another family with `chart --font`, `font =` in recipes, `ds.chart(font=...)` or the `BETTEROFF_FONT` environment variable. Chart sidecars record the font, and the static-export check now looks for whichever font you chose.
 - Direct labels reserve a little more room at the right edge so wider fonts don't crowd it.
