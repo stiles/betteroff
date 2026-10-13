@@ -47,7 +47,7 @@ Fetches the table, or reuses the cache, validates it and prints or writes it.
 | `-o, --output FILE` | Write `.csv` or `.json`, plus `FILE.meta.json` |
 | `-f, --format table\|csv\|json` | Override the format. Must agree with the `-o` extension |
 | `--wide` | One row per month, one column per response id |
-| `-m, --measure share\|index` | Response shares in percent (default) or the index score |
+| `-m, --measure share\|index` | Response shares in percent (default) or the index score. Headline indexes only have `index`, their default |
 | `--start`, `--end` | Limit months; `YYYY`, `YYYY-MM` or `YYYY-MM-DD` |
 | `--refresh` | Check the source now, even if the cache is fresh |
 | `--offline` | Use the saved snapshot only; fail if there is none |
@@ -85,7 +85,7 @@ Builds a chart from the same validated data `get` returns. Needs the `charts` ex
 | `--monthly/--no-monthly` | Draw the thin monthly lines behind a rolling average (default), or show only the average. `--no-raw` still works |
 | `--responses LIST` | Draw only these responses, comma-separated: ids or `positive`, `negative`, `neutral`, `nonresponse`. Default all |
 | `--recessions` | Shade NBER recessions |
-| `-m, --measure share\|index` | Response shares (default) or the index score |
+| `-m, --measure share\|index` | Response shares (default) or the index score. Headline indexes only have `index` |
 | `--start`, `--end` | Displayed range. Defaults to the start of monthly data, usually January 1978 |
 | `--width`, `--height` | Frame size in pixels for static output. Default 960 by 540 |
 | `-t, --theme NAME\|FILE` | Color theme: `okabe-ito` (default), `puor`, `brbg`, `rdbu`, `tol` or a `.toml` file |

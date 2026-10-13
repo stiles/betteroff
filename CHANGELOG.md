@@ -4,6 +4,11 @@ All notable changes to Betteroff. Versions follow [semantic versioning](https://
 
 ## [Unreleased]
 
+- Headline indexes: the Index of Consumer Sentiment (`ICS`, `consumer_sentiment`), Index of Current Economic Conditions (`ICC`, `current_conditions`) and Index of Consumer Expectations (`ICE`, `consumer_expectations`), from the CSV files on Michigan's main site. They aren't embargoed, so they include the latest final reading and the mid-month preliminary one.
+- Index data has a `preliminary` column, and sidecars give `source.release_status` and `coverage.latest_preliminary`. Charts mark a preliminary latest month with an open dot and a subtitle note. When the final reading arrives, the revision report lists the month under `finalized` with both values instead of warning about a revision.
+- `--measure` now defaults to `share` for tables and `index` for headline indexes.
+- One-line charts, such as `--measure index` or a single `--responses` choice, now draw at full line width.
+- `cache prune` also removes headline index snapshots, which are stored as `.json`.
 ## [0.3.0] - 2026-10-12
 
 - `betteroff cache prune` deletes older snapshots, keeping the newest per question (`--keep`, default 1) and always the latest; `--dry-run` lists what it would delete.

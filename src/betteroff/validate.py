@@ -21,14 +21,37 @@ def _alnum(text: str) -> str:
 
 
 def _fail(question: Question, detail: str) -> ValidationError:
+    name = question.title if question.is_index else f'Table {question.table}'
     return ValidationError(
-        f'Table {question.table} failed validation: {detail}.',
+        f'{name} failed validation: {detail}.',
         'The source may have changed; please report an issue. Your cached data was not replaced.',
     )
 
 
+def validate_index(
+    parsed: ParsedTable, question: Question, today: date | None = None
+) -> list[dict]:
+    """Checks for a headline index. Raises on impossible data; returns the parser's flags."""
+    frame = parsed.frame
+    today = today or date.today()
+    if frame['date'].duplicated().any():
+        raise _fail(question, 'duplicate months')
+    latest = frame['date'].max().date()
+    if latest > today.replace(day=1):
+        raise _fail(question, f'latest month {latest:%B %Y} is in the future')
+    if ((frame['index'] <= 0) | (frame['index'] > 200)).any():
+        raise _fail(question, 'an index value is outside 0-200')
+    if frame['preliminary'].sum() > 1 or (
+        frame['preliminary'].any() and not frame['preliminary'].iloc[-1]
+    ):
+        raise _fail(question, 'only the latest month can be preliminary')
+    return list(parsed.flags)
+
+
 def validate(parsed: ParsedTable, question: Question, today: date | None = None) -> list[dict]:
     """Raise on impossible data; return a list of flags for suspicious rows."""
+    if question.is_index:
+        return validate_index(parsed, question, today)
     frame = parsed.frame
     ids = [r.id for r in question.responses]
     shares = frame[ids]

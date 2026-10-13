@@ -34,9 +34,17 @@ def parse_date(value: str | date | None, name: str = 'date') -> date | None:
         ) from None
 
 
-def check_measure(measure: str) -> str:
+def check_measure(measure: str | None, question: Question | None = None) -> str:
+    """Validate a measure, defaulting by kind: shares for tables, the index for indexes."""
+    if not measure:
+        return 'index' if question is not None and question.is_index else 'share'
     if measure not in MEASURES:
         raise InputError(f'Unknown measure "{measure}".', f'Use one of: {", ".join(MEASURES)}.')
+    if question is not None and question.is_index and measure != 'index':
+        raise InputError(
+            f'{question.title} is an index; it has no response shares.',
+            'Drop --measure, or use --measure index.',
+        )
     return measure
 
 
@@ -51,12 +59,12 @@ class Dataset:
     question: Question
     frame: pd.DataFrame
     metadata: dict[str, Any]
-    measure: str = 'share'
+    measure: str = ''  # Empty means the default for the kind of series
     start: date | None = None
     end: date | None = None
 
     def __post_init__(self) -> None:
-        check_measure(self.measure)
+        self.measure = check_measure(self.measure, self.question)
         if self.start and self.end and self.start > self.end:
             raise InputError('--start is after --end.', 'Swap the dates.')
 
@@ -76,8 +84,22 @@ class Dataset:
 
     @property
     def data(self) -> pd.DataFrame:
-        """Tidy observations: one row per month and response."""
+        """Tidy observations: one row per month and response, or per month for an index."""
         wide = self._trim(self.frame)
+        if self.question.is_index:
+            return pd.DataFrame(
+                {
+                    'date': wide['date'],
+                    'question_id': self.question.id,
+                    'measure': 'index',
+                    'response_id': 'index',
+                    'response_label': self.question.title,
+                    'value': wide['index'].astype('float64'),
+                    'unit': 'index',
+                    'preliminary': wide['preliminary'].astype(bool),
+                    'population': self.metadata.get('population', 'all_households'),
+                }
+            )
         if self.measure == 'index':
             labels = {'index': load_catalog().index_label}
         else:
@@ -108,6 +130,8 @@ class Dataset:
 
     def wide(self) -> pd.DataFrame:
         """One row per month and one column per response id, in catalog order."""
+        if self.question.is_index:
+            return self._trim(self.frame)[['date', 'index', 'preliminary']].copy()
         frame = self._trim(self.frame)[['date', *self.value_columns, 'cases']].copy()
         frame['cases'] = frame['cases'].astype('Int64')
         return frame
@@ -124,6 +148,6 @@ class Dataset:
 
     def __repr__(self) -> str:
         return (
-            f'<Dataset {self.question.id} (table {self.question.table}) measure={self.measure} '
+            f'<Dataset {self.question.id} ({self.question.table}) measure={self.measure} '
             f'{len(self._trim(self.frame))} months, latest {self.latest_period}>'
         )

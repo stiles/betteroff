@@ -31,7 +31,23 @@ class Break:
 
 
 @dataclass(frozen=True)
+class IndexSource:
+    """Where a headline index lives on Michigan's main site."""
+
+    history_url: str
+    history_column: str
+    current_url: str
+    current_column: str
+
+
+@dataclass(frozen=True)
 class Question:
+    """A catalog entry: a survey question's table, or a headline index.
+
+    Headline indexes (`kind == 'index'`) have no responses, use their code
+    (ICS, ICC, ICE) as `table` and carry an `IndexSource`.
+    """
+
     id: str
     table: str
     title: str
@@ -41,6 +57,13 @@ class Question:
     notes: tuple[str, ...] = ()
     breaks: tuple[Break, ...] = ()
     monthly_since: date | None = None  # Only when later than the survey-wide date
+    kind: str = 'table'
+    label: str = ''  # Short series label for headline indexes
+    source: IndexSource | None = None
+
+    @property
+    def is_index(self) -> bool:
+        return self.kind == 'index'
 
     def response(self, response_id: str) -> Response:
         for r in self.responses:
@@ -49,8 +72,21 @@ class Question:
         raise KeyError(response_id)
 
     def to_dict(self) -> dict[str, object]:
+        if self.is_index:
+            assert self.source is not None
+            return {
+                'id': self.id,
+                'kind': self.kind,
+                'code': self.table,
+                'title': self.title,
+                'label': self.label,
+                'definition': self.wording,
+                'notes': list(self.notes),
+                'source_files': [self.source.history_url, self.source.current_url],
+            }
         return {
             'id': self.id,
+            'kind': self.kind,
             'table': self.table,
             'title': self.title,
             'wording': self.wording,
@@ -65,6 +101,13 @@ class Question:
 
 
 @dataclass(frozen=True)
+class Headline:
+    page_url: str
+    base: str
+    notes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Catalog:
     landing_url: str
     attribution: str
@@ -74,7 +117,14 @@ class Catalog:
     index_label: str
     index_definition: str
     notes: tuple[str, ...]
+    table_notes: tuple[str, ...]
+    headline: Headline
     questions: tuple[Question, ...] = field(default_factory=tuple)
+
+    def notes_for(self, question: Question) -> list[str]:
+        """Catalog-wide notes that apply to this entry, then its own."""
+        extra = self.headline.notes if question.is_index else self.table_notes
+        return [*self.notes, *extra, *question.notes]
 
     def resolve(self, identifier: str) -> Question:
         key = identifier.strip().lower()
@@ -121,6 +171,26 @@ class Catalog:
         return [q for _, q in scored]
 
 
+def _index(raw: dict) -> Question:
+    return Question(
+        id=raw['id'],
+        table=raw['code'],
+        title=raw['title'],
+        wording=raw['definition'],
+        responses=(),
+        keywords=tuple(raw.get('keywords', ())),
+        notes=tuple(raw.get('notes', ())),
+        kind='index',
+        label=raw['label'],
+        source=IndexSource(
+            history_url=raw['history_url'],
+            history_column=raw['history_column'],
+            current_url=raw['current_url'],
+            current_column=raw['current_column'],
+        ),
+    )
+
+
 def _question(raw: dict) -> Question:
     responses = tuple(Response(**r) for r in raw['responses'])
     for r in responses:
@@ -155,5 +225,14 @@ def load_catalog() -> Catalog:
         index_label=raw['index_label'],
         index_definition=raw['index_definition'],
         notes=tuple(raw['notes']),
-        questions=tuple(_question(q) for q in raw['questions']),
+        table_notes=tuple(raw['table_notes']),
+        headline=Headline(
+            page_url=raw['headline']['page_url'],
+            base=raw['headline']['base'],
+            notes=tuple(raw['headline']['notes']),
+        ),
+        questions=(
+            *(_index(i) for i in raw['indexes']),
+            *(_question(q) for q in raw['questions']),
+        ),
     )

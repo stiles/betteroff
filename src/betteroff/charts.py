@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import math
 import os
 import re
 import sys
@@ -111,6 +112,11 @@ def select_responses(
     """
     if responses is None:
         return None
+    if question.is_index:
+        raise InputError(
+            f'{question.title} is a single index; it has no responses to choose.',
+            'Drop the response selection.',
+        )
     if measure == 'index':
         raise InputError(
             'Responses can only be chosen for shares, not the index score.',
@@ -247,6 +253,15 @@ def _dodge(values: list[float], gap: float, lo: float, hi: float) -> list[float]
     return out
 
 
+def _preliminary_month(dataset: Dataset, prep: Prepared) -> pd.Timestamp | None:
+    """The preliminary month of a headline index, if it falls in the displayed range."""
+    frame = dataset.frame
+    if 'preliminary' not in frame or not frame['preliminary'].any():
+        return None
+    when = pd.Timestamp(frame.loc[frame['preliminary'].astype(bool), 'date'].iloc[-1])
+    return when if prep.start <= when <= prep.end else None
+
+
 def _month(ts: pd.Timestamp | date) -> str:
     return f'{ts:%B %Y}'
 
@@ -298,13 +313,23 @@ def build_chart(
     is_index = dataset.measure == 'index'
     columns = selected or prep.columns
 
+    ticks: list[int] | None
     if is_index:
-        labels = {'index': catalog.index_label}
+        labels = {'index': q.label if q.is_index else catalog.index_label}
         colors = {'index': th.index}
         label_colors = colors
         dashes: dict[str, list[int]] = {'index': [1, 0]}
         widths: dict[str, float] = {'index': LINE_WIDTH}
         domain, ticks = [0, 200], [0, 50, 100, 150, 200]
+        if q.is_index:
+            # Headline indexes have no fixed range; fit the axis to the values shown.
+            drawn = prep.raw if prep.raw is not None and monthly else prep.main
+            values = drawn['index'].dropna()
+            domain = [
+                int(math.floor(values.min() / 10) * 10),
+                int(math.ceil(values.max() / 10) * 10),
+            ]
+            ticks = None
         unit_suffix = ''
     else:
         labels = {r.id: r.label for r in q.responses}
@@ -352,7 +377,7 @@ def build_chart(
         title=None,
         scale=alt.Scale(domain=domain, nice=False, zero=False),
         axis=alt.Axis(
-            values=ticks,
+            values=ticks if ticks is not None else alt.Undefined,
             labelExpr=label_expr,
             grid=True,
             gridColor=GRID,
@@ -386,10 +411,15 @@ def build_chart(
         # Same field as color, so Vega-Lite merges them into one legend
         legend=None if direct_labels or is_index else alt.Legend(orient='top', title=None),
     )
-    stroke_width = alt.StrokeWidth(
-        'label:N',
-        scale=alt.Scale(domain=color_domain, range=[widths[c] for c in columns]),
-        legend=None,
+    # A one-value scale range falls back to Vega-Lite's default width, so one line gets a value.
+    stroke_width: Any = (
+        alt.value(widths[columns[0]])
+        if len(columns) == 1
+        else alt.StrokeWidth(
+            'label:N',
+            scale=alt.Scale(domain=color_domain, range=[widths[c] for c in columns]),
+            legend=None,
+        )
     )
     label_color = alt.Color(
         'label:N',
@@ -413,7 +443,7 @@ def build_chart(
                 .encode(x=x, x2='end:T')
             )
 
-    if is_index:
+    if is_index and not q.is_index:
         layers.append(
             alt.Chart(pd.DataFrame({'value': [100]}))
             .mark_rule(color='#9a9a9a', strokeWidth=1)
@@ -461,6 +491,18 @@ def build_chart(
             .encode(x=x, y=y, color=color)
         )
 
+    prelim = _preliminary_month(dataset, prep)
+    if prelim is not None:
+        last = prep.main.loc[prep.main['date'] == prelim, 'index']
+        if not last.isna().all():
+            layers.append(
+                alt.Chart(pd.DataFrame({'date': [prelim], 'value': [float(last.iloc[0])]}))
+                .mark_point(
+                    filled=True, fill='white', stroke=th.index, strokeWidth=2, size=60, opacity=1
+                )
+                .encode(x=x, y=y)
+            )
+
     # One tooltip per month: an invisible rule carrying every response's value.
     tip = prep.main[['date', *columns]].copy()
     tooltip = [alt.Tooltip('date:T', title='Month', format='%B %Y')]
@@ -478,6 +520,10 @@ def build_chart(
                     f'{c}__monthly:Q', title=f'{labels[c]}, monthly{unit_suffix}', format='.0f'
                 )
             )
+    if q.is_index:
+        status = dataset.frame.set_index('date')['preliminary'].astype(bool)
+        tip['release'] = tip['date'].map(status).map({True: 'Preliminary', False: 'Final'})
+        tooltip.append(alt.Tooltip('release:N', title='Release'))
     nearest = alt.selection_point(
         name='hover',
         nearest=True,
@@ -532,7 +578,8 @@ def build_chart(
 
     meta = dataset.metadata
     footer = [
-        f'Source: {catalog.attribution}, table {q.table}.'
+        f'Source: {catalog.attribution}'
+        + ('.' if q.is_index else f', table {q.table}.')
         + (' Recession dates: NBER.' if recessions else ''),
         f'Latest month: {_month(pd.Timestamp(meta["coverage"]["latest_period"] + "-01"))}. '
         f'Retrieved {_day(meta["snapshot"]["retrieved_at"])}.',
@@ -551,7 +598,9 @@ def build_chart(
         .encode(x=alt.value(0), y=alt.value(plot_h + 30), text='text:N')
     )
 
-    if is_index:
+    if q.is_index:
+        subtitle = [f'Index, {catalog.headline.base}']
+    elif is_index:
         subtitle = [f'{catalog.index_label}: percent favorable minus percent unfavorable, plus 100']
     else:
         subtitle = ['Percent of respondents']
@@ -559,6 +608,8 @@ def build_chart(
         subtitle[0] += f', {rolling}-month trailing average'
         if monthly:
             subtitle[0] += '; thin lines show monthly values'
+    if prelim is not None:
+        subtitle.append(f'{_month(prelim)} is a preliminary reading; the open dot marks it')
     if selected and len(selected) < len(prep.columns):
         hidden = [labels[c] for c in prep.columns if c not in selected]
         subtitle.append(f'Not shown: {"; ".join(hidden)}')

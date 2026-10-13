@@ -11,11 +11,11 @@ import betteroff as bo
 ```python
 bo.search('home values')        # list[Question], best match first
 bo.list_questions()             # every supported question
-q = bo.describe('34')           # Question for an id or table number
+q = bo.describe('34')           # Question for an id, table number or index code (ICS)
 q.wording, q.responses, q.notes
 ```
 
-`Question` is a frozen dataclass with `id`, `table`, `title`, `wording`, `responses`, `keywords`, `notes`, `breaks` and `monthly_since`. Each `Response` has `id`, `label`, `source_label` and `polarity` (`positive`, `neutral`, `negative` or `nonresponse`). `q.to_dict()` gives a JSON-ready copy.
+`Question` is a frozen dataclass with `id`, `table`, `title`, `wording`, `responses`, `keywords`, `notes`, `breaks` and `monthly_since`. Headline indexes are `Question`s too, with `kind == 'index'` (`q.is_index`), their code (`ICS`, `ICC`, `ICE`) as `table`, a definition as `wording` and no responses. Each `Response` has `id`, `label`, `source_label` and `polarity` (`positive`, `neutral`, `negative` or `nonresponse`). `q.to_dict()` gives a JSON-ready copy.
 
 ## Getting data
 
@@ -26,7 +26,7 @@ ds = bo.get(
     offline=False,         # True uses the saved snapshot only
     start=None,            # 'YYYY', 'YYYY-MM', 'YYYY-MM-DD' or datetime.date
     end=None,
-    measure='share',       # or 'index'
+    measure=None,          # 'share' or 'index'; defaults to share, or index for ICS, ICC, ICE
 )
 ```
 
@@ -36,7 +36,7 @@ ds = bo.get(
 
 | Attribute | Contents |
 | --- | --- |
-| `ds.data` | Tidy DataFrame: `date`, `question_id`, `measure`, `response_id`, `response_label`, `value`, `unit`, `cases`, `population` |
+| `ds.data` | Tidy DataFrame: `date`, `question_id`, `measure`, `response_id`, `response_label`, `value`, `unit`, `cases`, `population`. Headline indexes have `preliminary` instead of `cases` |
 | `ds.wide()` | One row per month: `date`, one column per response id in catalog order, `cases` |
 | `ds.metadata` | Dict with question, source, snapshot, coverage, notes, quality flags and revisions |
 | `ds.question` | The `Question` |

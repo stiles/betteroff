@@ -46,6 +46,18 @@ def _atomic_write(path: Path, data: bytes) -> None:
         raise
 
 
+def bundle(files: dict[str, str]) -> bytes:
+    """Several source files as one snapshot: JSON keyed by URL, stable byte for byte."""
+    return json.dumps(files, sort_keys=True, ensure_ascii=False).encode('utf-8')
+
+
+def unbundle(content: bytes) -> dict[str, str]:
+    files = json.loads(content.decode('utf-8'))
+    if not isinstance(files, dict):
+        raise ValueError('not a snapshot bundle')
+    return {str(k): str(v) for k, v in files.items()}
+
+
 @dataclass
 class Snapshot:
     sha256: str
@@ -59,6 +71,7 @@ class Snapshot:
     latest_period: str
     observations: int
     parser_version: str
+    suffix: str = '.xls'  # Headline indexes store a JSON bundle of CSV files
 
     @property
     def id(self) -> str:
@@ -119,8 +132,8 @@ class Cache:
         finally:
             self.lock_path.unlink(missing_ok=True)
 
-    def snapshot_path(self, sha256: str) -> Path:
-        return self.root / 'snapshots' / f'{sha256}.xls'
+    def snapshot_path(self, sha256: str, suffix: str = '.xls') -> Path:
+        return self.root / 'snapshots' / f'{sha256}{suffix}'
 
     def _read(self) -> dict:
         try:
@@ -159,7 +172,7 @@ class Cache:
         return out
 
     def read_bytes(self, snapshot: Snapshot) -> bytes:
-        path = self.snapshot_path(snapshot.sha256)
+        path = self.snapshot_path(snapshot.sha256, snapshot.suffix)
         try:
             content = path.read_bytes()
         except FileNotFoundError:
@@ -173,7 +186,7 @@ class Cache:
 
     def store(self, snapshot: Snapshot, content: bytes) -> Snapshot:
         """Save validated bytes and make them the latest snapshot for the question."""
-        path = self.snapshot_path(snapshot.sha256)
+        path = self.snapshot_path(snapshot.sha256, snapshot.suffix)
         with self._lock():
             if not path.exists():
                 _atomic_write(path, content)
@@ -205,7 +218,11 @@ class Cache:
                 entry['snapshots'] = kept
             referenced = {s['sha256'] for e in data['questions'].values() for s in e['snapshots']}
             folder = self.root / 'snapshots'
-            files = sorted(folder.glob('*.xls')) if folder.is_dir() else []
+            files = (
+                sorted(f for f in folder.iterdir() if f.is_file() and not f.name.startswith('.'))
+                if folder.is_dir()
+                else []
+            )
             removed = [f for f in files if f.stem not in referenced]
             freed = sum(f.stat().st_size for f in removed)
             if not dry_run:

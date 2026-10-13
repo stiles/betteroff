@@ -45,7 +45,7 @@ class Job:
     name: str
     start: str | None = None
     end: str | None = None
-    measure: str = 'share'
+    measure: str = ''
     wide: bool = False
     data_formats: list[str] = field(default_factory=list)
     chart_formats: list[str] = field(default_factory=list)
@@ -104,7 +104,7 @@ def load_recipe(path: Path) -> Recipe:
         if 'question' not in j:
             raise bad(f'job {i} needs a question')
         question = load_catalog().resolve(str(j['question']))
-        check_measure(str(j.get('measure', 'share')))
+        measure = check_measure(_str(j.get('measure')), question)
         data_formats = list(j.get('data_formats', []))
         chart_formats = list(j.get('chart_formats', []))
         if not data_formats and not chart_formats:
@@ -117,7 +117,6 @@ def load_recipe(path: Path) -> Recipe:
                 raise bad(f'job {i} has unknown chart format "{f}"')
         if 'raw' in j and 'monthly' in j:
             raise bad(f'job {i} sets both monthly and raw; raw is the old name, so keep monthly')
-        measure = str(j.get('measure', 'share'))
         responses = j.get('responses')
         if responses is not None and not isinstance(responses, str | list):
             raise bad(f'job {i} responses must be a list such as ["positive", "negative"]')

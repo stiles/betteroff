@@ -15,7 +15,7 @@ from .cache import Cache, Snapshot, now_utc
 from .catalog import Question, load_catalog
 from .errors import FetchError, InputError
 from .models import Dataset, check_measure, parse_date
-from .parsers import historical
+from .parsers import headline, historical
 
 log = logging.getLogger('betteroff')
 METADATA_SCHEMA_VERSION = 1
@@ -42,35 +42,60 @@ def _period(ts: pd.Timestamp) -> str:
 
 
 def compare_snapshots(old: pd.DataFrame, new: pd.DataFrame, columns: list[str]) -> dict[str, Any]:
-    """Describe appended, removed and revised months between two parsed frames."""
-    o = old.set_index('date')[columns]
-    n = new.set_index('date')[columns]
+    """Describe appended, removed and revised months between two parsed frames.
+
+    For headline indexes, a month that was preliminary and is now final counts as
+    finalized, not revised, whether or not its value changed.
+    """
+    o = old.set_index('date')
+    n = new.set_index('date')
     appended = n.index.difference(o.index)
     removed = o.index.difference(n.index)
     common = n.index.intersection(o.index)
-    a, b = o.loc[common], n.loc[common]
+    a, b = o.loc[common, columns], n.loc[common, columns]
     differs = ~((a == b) | (a.isna() & b.isna()))
+    out: dict[str, Any] = {}
+    if 'preliminary' in o and 'preliminary' in n:
+        was_prelim = o.loc[common, 'preliminary'].astype(bool)
+        now_final = ~n.loc[common, 'preliminary'].astype(bool)
+        finalized = was_prelim & now_final
+        before = o.loc[common, 'index'].astype('float64').to_dict()
+        after = n.loc[common, 'index'].astype('float64').to_dict()
+        out['finalized'] = [
+            {'month': _period(d), 'preliminary': before[d], 'final': after[d]}
+            for d in finalized[finalized].index
+        ]
+        differs = differs.loc[~finalized]
     changed = differs.any(axis=1)
     return {
         'appended_months': [_period(d) for d in appended],
         'removed_months': [_period(d) for d in removed],
         'changed_months': [_period(d) for d in changed[changed].index],
         'changed_values': int(differs.to_numpy().sum()),
+        **out,
     }
+
+
+def _parser(question: Question) -> Any:
+    return headline if question.is_index else historical
 
 
 def _parse_and_validate(content: bytes, question: Question) -> tuple[Any, list[dict]]:
     from .validate import validate
 
-    parsed = historical.parse(content, question)
+    parsed = _parser(question).parse(content, question)
     flags = validate(parsed, question)
     return parsed, flags
 
 
 def _fetch(question: Question, client: Any = None) -> Any:
-    from .fetch import download_table
+    from .fetch import download_index, download_table
 
-    return download_table(question.table, load_catalog().landing_url, client=client)
+    catalog = load_catalog()
+    if question.source is not None:
+        urls = [question.source.history_url, question.source.current_url]
+        return download_index(urls, catalog.headline.page_url, client=client)
+    return download_table(question.table, catalog.landing_url, client=client)
 
 
 def load(
@@ -106,7 +131,8 @@ def load(
         parsed, flags = _parse_and_validate(cache.read_bytes(current), question)
         return parsed, flags, current, 'cached', None
 
-    log.info('Checking source for table %s (%s)...', question.table, question.id)
+    what = question.table if question.is_index else f'table {question.table}'
+    log.info('Checking source for %s (%s)...', what, question.id)
     try:
         download = _fetch(question, client)
     except FetchError:
@@ -136,7 +162,8 @@ def load(
         first_period=_period(frame['date'].min()),
         latest_period=_period(frame['date'].max()),
         observations=len(frame),
-        parser_version=historical.PARSER_VERSION,
+        parser_version=_parser(question).PARSER_VERSION,
+        suffix='.json' if question.is_index else '.xls',
     )
     revisions = None
     if current is not None and current.sha256 == sha:
@@ -159,6 +186,14 @@ def load(
 
 
 def _report_revisions(question: Question, rev: dict[str, Any]) -> None:
+    for f in rev.get('finalized', []):
+        log.info(
+            '%s: %s is now final at %s (preliminary was %s).',
+            question.id,
+            f['month'],
+            f['final'],
+            f['preliminary'],
+        )
     if rev['appended_months']:
         log.info(
             '%s: %d new month(s) through %s.',
@@ -201,17 +236,32 @@ def build_metadata(
                 BetteroffWarning,
                 stacklevel=4,
             )
-    return {
-        'schema_version': METADATA_SCHEMA_VERSION,
-        'betteroff_version': __version__,
-        'parser_version': historical.PARSER_VERSION,
-        'question': {
+    coverage: dict[str, Any] = {
+        'first_period': snapshot.first_period,
+        'latest_period': snapshot.latest_period,
+        'observations': snapshot.observations,
+        'monthly_since': (question.monthly_since or catalog.monthly_since).isoformat()[:7],
+    }
+    if question.source is not None:
+        latest_prelim = bool(parsed.frame['preliminary'].iloc[-1])
+        coverage['latest_preliminary'] = latest_prelim
+        question_meta = {**question.to_dict(), 'base': catalog.headline.base}
+        units = {'index': 'index'}
+        source: dict[str, Any] = {
+            'publisher': catalog.attribution,
+            'landing_url': catalog.headline.page_url,
+            'download_urls': [question.source.history_url, question.source.current_url],
+            'code': question.table,
+            'release_status': 'preliminary' if latest_prelim else 'final',
+            'usage_agreement': catalog.agreement_url,
+        }
+    else:
+        question_meta = {
             **question.to_dict(),
             'index': {'label': catalog.index_label, 'definition': catalog.index_definition},
-        },
-        'population': catalog.population,
-        'units': {'share': 'percent', 'index': 'index'},
-        'source': {
+        }
+        units = {'share': 'percent', 'index': 'index'}
+        source = {
             'publisher': catalog.attribution,
             'landing_url': catalog.landing_url,
             'download_url': snapshot.url,
@@ -219,7 +269,15 @@ def build_metadata(
             'source_period': snapshot.source_period,
             'release_status': 'unknown',
             'usage_agreement': catalog.agreement_url,
-        },
+        }
+    return {
+        'schema_version': METADATA_SCHEMA_VERSION,
+        'betteroff_version': __version__,
+        'parser_version': _parser(question).PARSER_VERSION,
+        'question': question_meta,
+        'population': catalog.population,
+        'units': units,
+        'source': source,
         'snapshot': {
             'id': snapshot.id,
             'sha256': snapshot.sha256,
@@ -227,13 +285,8 @@ def build_metadata(
             'checked_at': snapshot.checked_at,
             'mode': mode,
         },
-        'coverage': {
-            'first_period': snapshot.first_period,
-            'latest_period': snapshot.latest_period,
-            'observations': snapshot.observations,
-            'monthly_since': (question.monthly_since or catalog.monthly_since).isoformat()[:7],
-        },
-        'notes': [*catalog.notes, *question.notes],
+        'coverage': coverage,
+        'notes': catalog.notes_for(question),
         'source_notes': parsed.source_notes,
         'quality_flags': flags,
         'revisions': revisions,
@@ -247,13 +300,16 @@ def get(
     offline: bool = False,
     start: str | date | None = None,
     end: str | date | None = None,
-    measure: str = 'share',
+    measure: str | None = None,
     cache: Cache | None = None,
     client: Any = None,
 ) -> Dataset:
-    """Fetch (or reuse a cached copy of) a table, validate it and return a Dataset."""
+    """Fetch (or reuse a cached copy of) a table or index, validate it and return a Dataset.
+
+    `measure` defaults to `share` for tables and `index` for headline indexes.
+    """
     question = load_catalog().resolve(identifier)
-    check_measure(measure)
+    measure = check_measure(measure, question)
     start_d, end_d = parse_date(start, 'start'), parse_date(end, 'end')
     parsed, flags, snapshot, mode, revisions = load(
         question, refresh=refresh, offline=offline, cache=cache, client=client

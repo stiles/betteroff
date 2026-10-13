@@ -20,6 +20,12 @@ One function, `betteroff.charts.build_chart`, makes every chart. The CLI, `Datas
 - Shares on a 0 to 100 axis, with a percent sign on the top label only. The index score uses 0 to 200 with a reference line at 100.
 - A title from the catalog, a subtitle with the unit and any transformation, and a footer with the source, table number, latest month and retrieval date.
 
+## Headline indexes
+
+Charts of ICS, ICC and ICE fit the vertical axis to the values shown, in steps of 10, since the indexes have no fixed range. The subtitle gives the base period (1966 = 100) and the footer credits Michigan without a table number.
+
+When the latest month is preliminary and in the displayed range, it's drawn as an open dot and the subtitle says so, for example "October 2026 is a preliminary reading; the open dot marks it." With `--rolling`, the dot sits on the last average, which includes the preliminary month. Tooltips give each month's release, preliminary or final.
+
 ## Missing months
 
 The data is reindexed to every calendar month, with explicit nulls for months that have no reading. Lines use Vega-Lite's `break-paths-show-domains` mode, so they break at gaps instead of drawing a straight line across them. Readings with no reading in the month before or after are drawn as dots, since a line can't show them. When the displayed range has gaps, the subtitle says so.

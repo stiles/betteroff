@@ -13,6 +13,8 @@ def test_identifiers_are_unique(catalog):
 
 def test_every_question_supports_the_index(catalog):
     for q in catalog.questions:
+        if q.is_index:
+            continue
         polarities = [r.polarity for r in q.responses]
         assert polarities.count('positive') == 1, q.id
         assert polarities.count('negative') == 1, q.id
@@ -49,3 +51,31 @@ def test_search_requires_every_term(catalog):
 def test_irregular_questions_record_monthly_start(catalog):
     assert catalog.resolve('10').monthly_since.isoformat() == '2011-07-01'
     assert catalog.resolve('34').monthly_since is None
+
+
+@pytest.mark.parametrize(
+    ('identifier', 'expected'),
+    [
+        ('ICS', 'consumer_sentiment'),
+        ('ics', 'consumer_sentiment'),
+        ('current_conditions', 'current_conditions'),
+        ('ICE', 'consumer_expectations'),
+    ],
+)
+def test_headline_indexes_resolve_by_code(catalog, identifier, expected):
+    q = catalog.resolve(identifier)
+    assert q.id == expected and q.is_index and q.responses == ()
+    assert q.source is not None and q.source.history_url.endswith('.csv')
+
+
+def test_headline_indexes_lead_the_catalog(catalog):
+    assert [q.table for q in catalog.questions[:3]] == ['ICS', 'ICC', 'ICE']
+    assert catalog.search('consumer sentiment')[0].id == 'consumer_sentiment'
+
+
+def test_notes_depend_on_the_source(catalog):
+    embargo = catalog.table_notes[0]
+    assert embargo in catalog.notes_for(catalog.resolve('34'))
+    ics_notes = catalog.notes_for(catalog.resolve('ICS'))
+    assert embargo not in ics_notes
+    assert any('preliminary' in n for n in ics_notes)

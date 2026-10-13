@@ -36,6 +36,7 @@ class ParsedTable:
     frame: pd.DataFrame
     wording: str | None
     source_notes: list[str] = field(default_factory=list)
+    flags: list[dict] = field(default_factory=list)  # Source quirks found while parsing
 
 
 def _norm(text: object) -> str:

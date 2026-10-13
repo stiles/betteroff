@@ -2,9 +2,10 @@
 
 Clean data and charts from the Michigan consumer surveys.
 
-Betteroff finds, downloads, validates, exports and charts the published monthly tables from the University of Michigan [Surveys of Consumers](https://data.sca.isr.umich.edu/). It keeps the question wording, response labels and source details attached to every file it writes, so a CSV or chart can be traced back to the exact download behind it.
+Betteroff finds, downloads, validates, exports and charts the headline sentiment indexes and the published monthly tables from the University of Michigan [Surveys of Consumers](https://data.sca.isr.umich.edu/). It keeps the question wording, response labels and source details attached to every file it writes, so a CSV or chart can be traced back to the exact download behind it.
 
 ```bash
+betteroff get ICS                  # Index of Consumer Sentiment, with this month's preliminary reading
 betteroff search government
 betteroff get government_policy --wide -o government_policy.csv
 betteroff chart government_policy --rolling 12 --recessions -o government_policy.svg
@@ -87,6 +88,24 @@ chart.save('government_policy.html', inline=True)
 
 See the [Python API docs](https://github.com/stiles/betteroff/blob/main/docs/python.md).
 
+## Headline indexes
+
+| Code | Id | Title |
+| --- | --- | --- |
+| ICS | `consumer_sentiment` | Index of Consumer Sentiment |
+| ICC | `current_conditions` | Index of Current Economic Conditions |
+| ICE | `consumer_expectations` | Index of Consumer Expectations |
+
+These come from the CSV files on Michigan's [main site](https://www.sca.isr.umich.edu/tables.html), which aren't embargoed, so they include the latest final reading and, mid-month, the new preliminary one. Every row and sidecar says which readings are preliminary:
+
+```console
+$ betteroff get ICS -f csv | tail -2
+2026-09-01,consumer_sentiment,index,index,Index of Consumer Sentiment,48.1,index,False,all_households
+2026-10-01,consumer_sentiment,index,index,Index of Consumer Sentiment,46.3,index,True,all_households
+```
+
+When the final reading replaces a preliminary one, Betteroff reports the month as finalized, with both values. Charts mark a preliminary latest month with an open dot and a note.
+
 ## Supported tables
 
 Every table in Michigan's catalog that uses the historical three-category layout, with one positive, one neutral and one negative response plus nonresponse where reported:
@@ -112,17 +131,17 @@ Every table in Michigan's catalog that uses the historical three-category layout
 | 43 | `home_selling_conditions` | Selling conditions for houses |
 | 45 | `home_value_change` | Change in home values during the past year |
 
-Tables with other layouts (the sentiment indexes, income and price distributions, probabilities, reasons for opinions and demographic breakdowns) aren't supported yet. All series cover all households.
+Tables with other layouts (the index components and demographic breakdowns, income and price distributions, probabilities and reasons for opinions) aren't supported yet. All series cover all households.
 
 ## How it works
 
-1. Betteroff reads Michigan's [tables page](https://data.sca.isr.umich.edu/tables.php), finds the current link to the table's historical Excel file and downloads it. Links carry a per-release key, so they are discovered fresh instead of guessed.
-2. It checks the file is a real Excel workbook, not an access page or error text sent with HTTP 200, then parses it and checks the column headers against the catalog. Any unexpected or missing column stops the run with exit code 4.
+1. For a table, Betteroff reads Michigan's [tables page](https://data.sca.isr.umich.edu/tables.php), finds the current link to the table's historical Excel file and downloads it. Links carry a per-release key, so they are discovered fresh instead of guessed. For a headline index, it downloads the index's history and current CSV files from the main site.
+2. It checks the files are real Excel workbooks or CSV files, not an access page or error text sent with HTTP 200, then parses them and checks the column headers against the catalog. Any unexpected or missing column stops the run with exit code 4.
 3. It validates the values and saves the raw bytes in a content-addressed cache with a manifest. A failed download or validation never replaces the last good snapshot.
 4. Later runs reuse the cache for 24 hours. `--refresh` forces a check; `--offline` never touches the network.
 5. When a refresh brings new bytes, Betteroff compares them with the previous snapshot and reports new months, revised months and removed months.
 
-**Latest month is not the same as retrieval time.** Michigan's detailed-data site updates after an embargo that ends four weeks after each month's final release, so the newest month here trails the headline number by a month or more. A refresh that finds no new month is working as intended.
+**Latest month is not the same as retrieval time.** Michigan's detailed-data site updates after an embargo that ends four weeks after each month's final release, so the newest month for a table trails the headline indexes by a month or more. A refresh that finds no new month is working as intended.
 
 More in the [data docs](https://github.com/stiles/betteroff/blob/main/docs/data.md).
 

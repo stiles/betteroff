@@ -78,8 +78,13 @@ OfflineOpt = Annotated[
     bool, typer.Option('--offline', help='Use the saved snapshot; never touch the network.')
 ]
 MeasureOpt = Annotated[
-    str,
-    typer.Option('--measure', '-m', help='share (percent per response) or index (index score).'),
+    str | None,
+    typer.Option(
+        '--measure',
+        '-m',
+        help='share (percent per response) or index (index score). Headline indexes '
+        'only have index.',
+    ),
 ]
 ForceOpt = Annotated[bool, typer.Option('--force', help='Overwrite an existing output file.')]
 QuietOpt = Annotated[
@@ -206,20 +211,28 @@ def describe_cmd(
         return
 
     out.print(f'[bold]{escape(q.title)}[/bold]')
-    out.print(f'[dim]Table {q.table} · id {q.id} · all households[/dim]\n')
-    out.print(f'"{escape(q.wording)}"\n')
-    table = Table(box=None, pad_edge=False, header_style='bold')
-    table.add_column('Response id', style='cyan')
-    table.add_column('Label')
-    table.add_column('Source label', style='dim')
-    table.add_column('Polarity', style='dim')
-    for r in q.responses:
-        table.add_row(r.id, r.label, r.source_label, r.polarity)
-    out.print(table)
-    out.print(
-        f'\nUnits: percent of respondents per response. [bold]--measure index[/bold] gives the '
-        f'{catalog.index_label.lower()}: {catalog.index_definition}'
-    )
+    if q.is_index:
+        out.print(f'[dim]Headline index {q.table} · id {q.id} · all households[/dim]\n')
+        out.print(f'{escape(q.wording)}\n')
+        out.print(
+            f"Units: index, {catalog.headline.base}. Once Michigan releases a month's "
+            'preliminary reading, it is included and marked preliminary until the final arrives.'
+        )
+    else:
+        out.print(f'[dim]Table {q.table} · id {q.id} · all households[/dim]\n')
+        out.print(f'"{escape(q.wording)}"\n')
+        table = Table(box=None, pad_edge=False, header_style='bold')
+        table.add_column('Response id', style='cyan')
+        table.add_column('Label')
+        table.add_column('Source label', style='dim')
+        table.add_column('Polarity', style='dim')
+        for r in q.responses:
+            table.add_row(r.id, r.label, r.source_label, r.polarity)
+        out.print(table)
+        out.print(
+            f'\nUnits: percent of respondents per response. [bold]--measure index[/bold] gives '
+            f'the {catalog.index_label.lower()}: {catalog.index_definition}'
+        )
 
     from .cache import Cache
 
@@ -234,7 +247,7 @@ def describe_cmd(
         out.print(f'\n[dim]No cached data yet. Run `betteroff get {q.id}` to fetch it.[/dim]')
 
     out.print('\n[bold]Notes[/bold]')
-    for note in (*q.notes, *catalog.notes):
+    for note in catalog.notes_for(q):
         out.print(f'• {escape(note)}')
     out.print(
         f"• Data are subject to Michigan's usage agreement ({catalog.agreement_url}): attribute to "
@@ -253,21 +266,37 @@ def _describe_recent(ds: Dataset) -> None:
         f'{meta["coverage"]["latest_period"]})[/dim]'
     )
     table = Table(box=None, pad_edge=False, header_style='bold')
-    table.add_column('Response')
-    for d in recent['date']:
-        table.add_column(f'{d:%b %Y}', justify='right')
+    table.add_column('Response' if not ds.question.is_index else 'Series')
+    for _, row in recent.iterrows():
+        table.add_column(_month_label(row), justify='right')
     table.add_column('Last 24 months', no_wrap=True)
     table.add_column('Range', style='dim', justify='right')
-    for r in ds.question.responses:
-        vals = [float(v) for v in last24[r.id]]
+    if ds.question.is_index:
+        series = [('index', ds.question.label)]
+    else:
+        series = [(r.id, r.label) for r in ds.question.responses]
+    for col, label in series:
+        vals = [float(v) for v in last24[col]]
         present = [v for v in vals if not math.isnan(v)]
         rng = f'{_fmt(min(present))}–{_fmt(max(present))}' if present else ''
-        table.add_row(r.label, *(_fmt(v) for v in recent[r.id]), sparkline(vals), rng)
+        table.add_row(label, *(_fmt(v) for v in recent[col]), sparkline(vals), rng)
     out.print(table)
+    if ds.question.is_index and bool(recent['preliminary'].iloc[-1]):
+        out.print('[dim](P) Preliminary; Michigan replaces it with a final reading.[/dim]')
+
+
+def _month_label(row: Any, fmt: str = '%b %Y') -> str:
+    label = f'{row["date"]:{fmt}}'
+    return f'{label} (P)' if bool(row.get('preliminary', False)) else label
 
 
 def _load(
-    question: str, refresh: bool, offline: bool, start: str | None, end: str | None, measure: str
+    question: str,
+    refresh: bool,
+    offline: bool,
+    start: str | None,
+    end: str | None,
+    measure: str | None,
 ) -> Dataset:
     from .api import get
 
@@ -287,7 +316,7 @@ def get_cmd(
     wide: Annotated[
         bool, typer.Option('--wide', help='One row per month, one column per response id.')
     ] = False,
-    measure: MeasureOpt = 'share',
+    measure: MeasureOpt = None,
     start: StartOpt = None,
     end: EndOpt = None,
     refresh: RefreshOpt = False,
@@ -344,12 +373,16 @@ def get_cmd(
 def _print_table(ds: Dataset) -> None:
     wide = ds.wide()
     shown = wide.tail(TABLE_ROWS)
-    if ds.measure == 'index':
+    q = ds.question
+    if q.is_index:
+        headers = {'index': q.label}
+    elif ds.measure == 'index':
         headers = {'index': load_catalog().index_label}
     else:
-        headers = {r.id: r.label for r in ds.question.responses}
+        headers = {r.id: r.label for r in q.responses}
+    where = q.table if q.is_index else f'table {q.table}'
     table = Table(
-        title=f'{ds.question.title} [dim](table {ds.question.table})[/dim]',
+        title=f'{q.title} [dim]({where})[/dim]',
         title_justify='left',
         box=None,
         pad_edge=False,
@@ -358,14 +391,23 @@ def _print_table(ds: Dataset) -> None:
     table.add_column('Month')
     for col in ds.value_columns:
         table.add_column(headers[col], justify='right')
-    table.add_column('Cases', justify='right', style='dim')
+    if not q.is_index:
+        table.add_column('Cases', justify='right', style='dim')
     for _, row in shown.iterrows():
-        table.add_row(
-            f'{row["date"]:%Y-%m}', *(_fmt(row[c]) for c in ds.value_columns), _fmt(row['cases'])
-        )
+        cells = [_month_label(row, '%Y-%m'), *(_fmt(row[c]) for c in ds.value_columns)]
+        if not q.is_index:
+            cells.append(_fmt(row['cases']))
+        table.add_row(*cells)
     out.print(table)
-    unit = 'index score' if ds.measure == 'index' else 'percent of respondents'
+    if q.is_index:
+        unit = f'index values, {load_catalog().headline.base}'
+    elif ds.measure == 'index':
+        unit = 'index score'
+    else:
+        unit = 'percent of respondents'
     note = f'Values are {unit}. Latest month {ds.latest_period}.'
+    if q.is_index and ds.metadata['coverage'].get('latest_preliminary'):
+        note += ' (P) marks a preliminary reading.'
     if len(wide) > len(shown):
         note += f' Showing the last {len(shown)} of {len(wide)} months; use -o or pipe for all.'
     err.print(f'[dim]{note}[/dim]')
@@ -406,7 +448,7 @@ def chart_cmd(
     recessions: Annotated[
         bool, typer.Option('--recessions', help='Shade NBER recessions.')
     ] = False,
-    measure: MeasureOpt = 'share',
+    measure: MeasureOpt = None,
     start: Annotated[
         str | None,
         typer.Option(
@@ -458,6 +500,9 @@ def chart_cmd(
     q = load_catalog().resolve(question)
     chosen_theme = load_theme(theme)
     chosen_font = resolve_font(font)
+    from .models import check_measure
+
+    measure = check_measure(measure, q)
     selected = select_responses(q, responses, measure)
     show_monthly = show_monthly and not no_raw
     if output is None:

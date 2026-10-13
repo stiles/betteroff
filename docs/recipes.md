@@ -53,7 +53,7 @@ Each `[[jobs]]` table:
 | `name` | question id | Base file name. Each job needs a unique name |
 | `data_formats` | `[]` | Any of `csv`, `json` |
 | `chart_formats` | `[]` | Any of `html`, `svg`, `png`, `pdf`, `vl.json` |
-| `measure` | `share` | `share` or `index` |
+| `measure` | `share`; `index` for headline indexes | `share` or `index` |
 | `wide` | `false` | Wide data files |
 | `start`, `end` | full range | Months to include in data files and charts |
 | `rolling` | none | Trailing average for charts |

@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urljoin, urlparse
 import httpx
 
 from . import __version__
+from .cache import bundle
 from .errors import FetchError
 
 OLE2_SIGNATURE = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
@@ -131,6 +132,37 @@ def download_table(table: str, landing_url: str, client: httpx.Client | None = N
         response = _get(client, url)
         check_excel(response, url)
         return Download(content=response.content, url=url, source_period=_source_period(url))
+    finally:
+        if own:
+            client.close()
+
+
+def check_csv(response: httpx.Response, url: str) -> str:
+    content = response.content
+    try:
+        text = content.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        text = content.decode('latin-1')
+    head = text.lstrip()[:200].lower()
+    if not head or head.startswith('<') or '<html' in head:
+        snippet = text.strip()[:80].replace('\n', ' ')
+        raise FetchError(
+            f'{url} returned something other than a CSV file: "{snippet}".',
+            'The file may have moved. Try again with --refresh; if it persists, check '
+            'https://www.sca.isr.umich.edu/tables.html in a browser.',
+        )
+    return text
+
+
+def download_index(urls: list[str], page_url: str, client: httpx.Client | None = None) -> Download:
+    """Download a headline index's CSV files from Michigan's main site as one bundle."""
+    own = client is None
+    client = client or httpx.Client(
+        timeout=TIMEOUT, follow_redirects=True, headers={'User-Agent': USER_AGENT}
+    )
+    try:
+        files = {url: check_csv(_get(client, url), url) for url in dict.fromkeys(urls)}
+        return Download(content=bundle(files), url=page_url, source_period=None)
     finally:
         if own:
             client.close()

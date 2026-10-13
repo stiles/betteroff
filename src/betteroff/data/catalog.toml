@@ -21,8 +21,61 @@ index_definition = "Percent favorable minus percent unfavorable plus 100. Michig
 notes = [
     "Michigan has surveyed monthly since January 1978. Earlier surveys were irregular, mostly quarterly and conducted in person. A few questions became monthly later; see each question's notes.",
     "From April to July 2024 the survey moved from telephone to web interviews in stages (25%, 50%, 75%, then all web). Michigan says most measures can be read as a continuous series but advises caution with month-to-month changes during the transition, because method effects vary by question.",
+]
+# Notes for tables from the detailed-data site only.
+table_notes = [
     "Michigan's detailed-data site updates after an embargo that ends four weeks after each month's final release, so the latest month here trails the headline release.",
 ]
+
+# Headline indexes come from CSV files on Michigan's main site, which aren't
+# embargoed. Each index joins a history file (every final reading) with a
+# current file (the last 12 months plus this month's preliminary reading,
+# marked "(P)"). Checked against the files on 2026-10-13. `history_column` and
+# `current_column` must match the files' headers exactly after collapsing
+# whitespace; the parser fails if they don't.
+[headline]
+page_url = "https://www.sca.isr.umich.edu/tables.html"
+base = "1966 = 100"
+notes = [
+    "Michigan releases a preliminary reading in the middle of each month and a final reading at the end. The preliminary reading targets about 420 interviews and the final about 1,000, so the two can differ. Betteroff marks preliminary readings and replaces them when the final arrives.",
+    "Index values use a 1966 base period (1966 = 100). Each index sums the index scores of its questions, divides by that sum in 1966 and adds a small constant that corrects for sample design changes (2.0 since December 1981). See Michigan's index calculations: https://data.sca.isr.umich.edu/fetchdoc.php?docid=24770",
+]
+
+[[indexes]]
+id = "consumer_sentiment"
+code = "ICS"
+title = "Index of Consumer Sentiment"
+label = "Consumer sentiment"
+definition = "Michigan's headline index, built from five questions: current and expected personal finances (tables 6 and 8), business conditions over the next year and the next five years (tables 28 and 29) and buying conditions for large household durables (table 35)."
+keywords = ["sentiment", "consumer sentiment", "headline", "umcsent", "ics", "index"]
+history_url = "https://www.sca.isr.umich.edu/files/tbmics.csv"
+history_column = "ICS_ALL"
+current_url = "https://www.sca.isr.umich.edu/files/tbcics.csv"
+current_column = "INDEX OF CONSUMER SENTIMENT"
+
+[[indexes]]
+id = "current_conditions"
+code = "ICC"
+title = "Index of Current Economic Conditions"
+label = "Current conditions"
+definition = "The part of the sentiment index about the present, built from current personal finances (table 6) and buying conditions for large household durables (table 35)."
+keywords = ["current conditions", "current economic conditions", "icc", "index", "sentiment"]
+history_url = "https://www.sca.isr.umich.edu/files/tbmiccice.csv"
+history_column = "ICC"
+current_url = "https://www.sca.isr.umich.edu/files/tbciccice.csv"
+current_column = "CURRENT INDEX"
+
+[[indexes]]
+id = "consumer_expectations"
+code = "ICE"
+title = "Index of Consumer Expectations"
+label = "Consumer expectations"
+definition = "The forward-looking part of the sentiment index, built from expected personal finances (table 8) and business conditions over the next year and the next five years (tables 28 and 29)."
+keywords = ["expectations", "consumer expectations", "ice", "index", "sentiment", "leading indicator"]
+history_url = "https://www.sca.isr.umich.edu/files/tbmiccice.csv"
+history_column = "ICE"
+current_url = "https://www.sca.isr.umich.edu/files/tbciccice.csv"
+current_column = "EXPECTED INDEX"
 
 [[questions]]
 id = "current_finances"
