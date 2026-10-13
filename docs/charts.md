@@ -5,6 +5,7 @@ betteroff chart government_policy
 betteroff chart 34 --rolling 12 --recessions -o gov.svg
 betteroff chart 34 --measure index --start 2000 -o gov_index.png
 betteroff chart 34 --theme brbg
+betteroff chart 6 --rolling 12 --no-monthly --responses positive,negative
 ```
 
 Charts are for checking and exploring the data. They make no editorial claims, and they still need a human edit before publication.
@@ -31,7 +32,25 @@ Methodology breaks recorded in the catalog are drawn as a dashed line with a sho
 
 `--rolling 12` is a trailing mean of 12 consecutive calendar months, and all 12 must have a reading. A window that includes a missing month produces no value, so a gap can't quietly become an 11-month average.
 
-The mean is computed on the full history and then trimmed to the displayed range, so the first month shown has a proper average. Thin, light monthly lines stay behind the averages so smoothing doesn't hide volatility; `--no-raw` hides them. Exports from `get` are never smoothed.
+The mean is computed on the full history and then trimmed to the displayed range, so the first month shown has a proper average. Thin, light monthly lines stay behind the averages so smoothing doesn't hide volatility. To see only the averages, pass `--no-monthly`. Exports from `get` are never smoothed.
+
+## Choosing responses
+
+By default a chart draws every response. `--responses` draws only the ones you name, using response ids from `betteroff describe` or the polarity names `positive`, `negative`, `neutral` and `nonresponse`:
+
+```bash
+betteroff chart 6 --responses better_off,worse_off
+betteroff chart 6 --responses positive,negative    # same lines, and works on any table
+```
+
+Polarity names are handy in recipes, where one `responses = ["positive", "negative"]` setting fits every question. A polarity the table doesn't have is skipped, but something has to match.
+
+- Lines keep their usual colors, so "Better off" is the same blue whether or not "Same" is drawn.
+- The subtitle lists the responses left out, since the lines shown no longer add up to 100.
+- Tooltips list only the lines drawn. A table with more than four responses gets direct labels instead of a legend once four or fewer are shown.
+- The sidecar records the response ids drawn.
+
+Exports from `get` always include every response. `--responses` works with shares only, not `--measure index`.
 
 ## Recessions
 

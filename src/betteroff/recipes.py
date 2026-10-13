@@ -27,7 +27,9 @@ JOB_KEYS = {
     'data_formats',
     'chart_formats',
     'rolling',
+    'monthly',
     'raw',
+    'responses',
     'recessions',
     'width',
     'height',
@@ -48,7 +50,8 @@ class Job:
     data_formats: list[str] = field(default_factory=list)
     chart_formats: list[str] = field(default_factory=list)
     rolling: int | None = None
-    raw: bool = True
+    monthly: bool = True
+    responses: list[str] | None = None
     recessions: bool = False
     width: int | None = None
     height: int | None = None
@@ -69,7 +72,7 @@ def _str(value: Any) -> str | None:
 
 def load_recipe(path: Path) -> Recipe:
     from .catalog import load_catalog
-    from .charts import CHART_FORMATS, resolve_font
+    from .charts import CHART_FORMATS, resolve_font, select_responses
     from .export import DATA_FORMATS
     from .models import check_measure
 
@@ -112,6 +115,13 @@ def load_recipe(path: Path) -> Recipe:
         for f in chart_formats:
             if f not in CHART_FORMATS:
                 raise bad(f'job {i} has unknown chart format "{f}"')
+        if 'raw' in j and 'monthly' in j:
+            raise bad(f'job {i} sets both monthly and raw; raw is the old name, so keep monthly')
+        measure = str(j.get('measure', 'share'))
+        responses = j.get('responses')
+        if responses is not None and not isinstance(responses, str | list):
+            raise bad(f'job {i} responses must be a list such as ["positive", "negative"]')
+        selected = select_responses(question, responses, measure)
         name = str(j.get('name') or question.id)
         if name in names:
             raise bad(f'two jobs write files named "{name}"; give one a different name')
@@ -122,12 +132,13 @@ def load_recipe(path: Path) -> Recipe:
                 name=name,
                 start=_str(j.get('start')),
                 end=_str(j.get('end')),
-                measure=str(j.get('measure', 'share')),
+                measure=measure,
                 wide=bool(j.get('wide', False)),
                 data_formats=data_formats,
                 chart_formats=chart_formats,
                 rolling=j.get('rolling'),
-                raw=bool(j.get('raw', True)),
+                monthly=bool(j.get('monthly', j.get('raw', True))),
+                responses=selected,
                 recessions=bool(j.get('recessions', False)),
                 width=j.get('width'),
                 height=j.get('height'),
@@ -173,7 +184,8 @@ def run_recipe(path: Path, refresh: bool = False, offline: bool = False) -> list
             chart = build_chart(
                 ds,
                 rolling=job.rolling,
-                raw=job.raw,
+                monthly=job.monthly,
+                responses=job.responses,
                 recessions=job.recessions,
                 width=job.width,
                 height=job.height,
@@ -187,7 +199,8 @@ def run_recipe(path: Path, refresh: bool = False, offline: bool = False) -> list
                     'format': fmt,
                     'chart': {
                         'rolling': job.rolling,
-                        'raw': job.raw,
+                        'monthly': job.monthly,
+                        'responses': job.responses,
                         'recessions': job.recessions,
                         'theme': job.theme.record() if job.theme else None,
                         'font': job.font,

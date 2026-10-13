@@ -64,6 +64,7 @@ betteroff chart 30 --open                                   # unemployment_expec
 betteroff chart 30 --rolling 12 --recessions -o unemp.svg   # editable vector file
 betteroff chart 30 --start 2000 -o unemp.png                # 2x PNG
 betteroff chart 30 --theme brbg -o unemp_brbg.html          # another color theme
+betteroff chart 30 --rolling 12 --no-monthly --responses positive,negative  # averages only
 ```
 
 Favorable and unfavorable answers get the theme's two colors on every chart; neutral answers are gray and nonresponse a dashed light gray. `betteroff themes` lists the color themes with swatches; the default is `okabe-ito`, a colorblind-safe blue and vermillion. Text is set in Inter; change it with `--font` or `BETTEROFF_FONT`.

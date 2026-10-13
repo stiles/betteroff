@@ -121,3 +121,32 @@ def test_bad_font_in_recipe(tmp_path):
     )
     with pytest.raises(InputError, match='single font family'):
         load_recipe(write(tmp_path, text))
+
+
+def test_monthly_and_responses_in_recipe(tmp_path):
+    text = (
+        'schema_version = 1\n'
+        '[[jobs]]\nquestion = "34"\nchart_formats = ["html"]\nmonthly = false\n'
+        'responses = ["positive", "negative"]\n'
+        '[[jobs]]\nquestion = "6"\nchart_formats = ["html"]\nraw = false\n'
+        'responses = "better_off"\n'
+        '[[jobs]]\nquestion = "30"\nchart_formats = ["html"]\n'
+    )
+    jobs = load_recipe(write(tmp_path, text)).jobs
+    assert [j.monthly for j in jobs] == [False, False, True]
+    assert [j.responses for j in jobs] == [['good_job', 'poor_job'], ['better_off'], None]
+
+
+@pytest.mark.parametrize(
+    ('extra', 'match'),
+    [
+        ('monthly = false\nraw = false\n', 'both monthly and raw'),
+        ('responses = ["better_off"]\n', "no response 'better_off'"),
+        ('responses = 3\n', 'must be a list'),
+        ('measure = "index"\nresponses = ["positive"]\n', 'not the index score'),
+    ],
+)
+def test_bad_series_settings_in_recipe(tmp_path, extra, match):
+    text = 'schema_version = 1\n[[jobs]]\nquestion = "34"\nchart_formats = ["html"]\n' + extra
+    with pytest.raises(InputError, match=match):
+        load_recipe(write(tmp_path, text))

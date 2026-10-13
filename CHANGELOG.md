@@ -8,6 +8,8 @@ All notable changes to Betteroff. Versions follow [semantic versioning](https://
 
 - `betteroff cache prune` deletes older snapshots, keeping the newest per question (`--keep`, default 1) and always the latest; `--dry-run` lists what it would delete.
 - Charts use Inter instead of Roboto, still falling back to Helvetica, Arial and sans-serif. Choose another family with `chart --font`, `font =` in recipes, `ds.chart(font=...)` or the `BETTEROFF_FONT` environment variable. Chart sidecars record the font, and the static-export check now looks for whichever font you chose.
+- `chart --responses` draws only the responses you name, by id or by polarity (`positive,negative`), in charts, recipes (`responses =`) and `ds.chart(responses=...)`. The subtitle lists what's left out, and colors don't change.
+- `--monthly/--no-monthly` replaces `--no-raw` for hiding the thin monthly lines behind a rolling average; the recipe key and Python argument are now `monthly`. The old names still work. Chart sidecars record `monthly` and `responses` instead of `raw`.
 - Direct labels reserve a little more room at the right edge so wider fonts don't crowd it.
 - Processes sharing a cache no longer overwrite each other's manifest updates; writes now take turns through a lock file.
 

@@ -16,6 +16,7 @@ from betteroff.charts import (
     recession_dates,
     response_colors,
     save_chart,
+    select_responses,
     trailing_mean,
 )
 from betteroff.errors import InputError
@@ -218,8 +219,10 @@ def test_spec_rolling_subtitle_and_raw_layer():
     assert '12-month trailing average' in spec['title']['subtitle'][0]
     lines = [la for la in layers_of(spec) if mark_type(la) == 'line']
     assert len(lines) == 2
-    spec = build_chart(make_ds(), rolling=12, raw=False).to_dict()
-    assert len([la for la in layers_of(spec) if mark_type(la) == 'line']) == 1
+    for kwargs in ({'monthly': False}, {'raw': False}):
+        spec = build_chart(make_ds(), rolling=12, **kwargs).to_dict()
+        assert len([la for la in layers_of(spec) if mark_type(la) == 'line']) == 1
+        assert 'thin lines' not in spec['title']['subtitle'][0]
 
 
 def test_isolated_readings_are_drawn_as_points():
@@ -345,3 +348,57 @@ def test_missing_font_noted_on_static_export(tmp_path, monkeypatch, caplog):
         assert not caplog.records
         save_chart(chart, tmp_path / 'g.svg', 'svg')
     assert 'Nonesuch Sans not found' in caplog.text
+
+
+def drawn_responses(spec):
+    line = [la for la in layers_of(spec) if mark_type(la) == 'line'][-1]
+    return sorted({r['response_id'] for r in layer_data(spec, line)})
+
+
+def test_select_responses_by_id_and_polarity():
+    q = load_catalog().resolve('government_policy')
+    assert select_responses(q, None) is None
+    assert select_responses(q, 'poor_job, good_job') == ['good_job', 'poor_job']
+    assert select_responses(q, ['positive', 'negative']) == ['good_job', 'poor_job']
+    assert select_responses(q, 'negative,fair') == ['fair', 'poor_job']
+
+
+@pytest.mark.parametrize(
+    ('responses', 'measure', 'match'),
+    [
+        ('better_off', 'share', "no response 'better_off'"),
+        (' , ', 'share', 'No responses given'),
+        ('positive', 'index', 'not the index score'),
+    ],
+)
+def test_select_responses_errors(responses, measure, match):
+    q = load_catalog().resolve('government_policy')
+    with pytest.raises(InputError, match=match) as exc:
+        select_responses(q, responses, measure)
+    if 'response' in match:
+        assert 'good_job' in str(exc.value) and 'positive' in str(exc.value)
+
+
+def test_spec_draws_only_chosen_responses():
+    ds = make_ds()
+    spec = build_chart(ds, responses=['positive', 'negative'], rolling=3).to_dict()
+    assert drawn_responses(spec) == ['good_job', 'poor_job']
+    assert spec['title']['subtitle'][-1] == "Not shown: Only fair; Don't know, no answer"
+    rule = next(la for la in layers_of(spec) if 'tooltip' in la.get('encoding', {}))
+    fields = {t['field'] for t in rule['encoding']['tooltip']}
+    assert fields == {'date', 'good_job', 'poor_job', 'good_job__monthly', 'poor_job__monthly'}
+    # Colors stay with the response, not its position among the lines drawn.
+    full = build_chart(ds).to_dict()
+
+    def colors(sp):
+        line = [la for la in layers_of(sp) if mark_type(la) == 'line'][-1]
+        sc = line['encoding']['color']['scale']
+        return dict(zip(sc['domain'], sc['range'], strict=True))
+
+    assert colors(spec).items() <= colors(full).items()
+
+
+def test_choosing_every_response_adds_no_note():
+    ids = [r.id for r in load_catalog().resolve('government_policy').responses]
+    spec = build_chart(make_ds(), responses=ids).to_dict()
+    assert not any(line.startswith('Not shown') for line in spec['title']['subtitle'])

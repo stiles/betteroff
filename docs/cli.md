@@ -82,7 +82,8 @@ Builds a chart from the same validated data `get` returns. Needs the `charts` ex
 | `-o, --output FILE` | `.html`, `.svg`, `.png`, `.pdf` or `.vl.json`. Defaults to `ID.html` in the current directory |
 | `-f, --format` | Override the format. Must agree with the `-o` extension |
 | `--rolling N` | Trailing average over N calendar months |
-| `--no-raw` | Hide the thin monthly lines drawn behind a rolling average |
+| `--monthly/--no-monthly` | Draw the thin monthly lines behind a rolling average (default), or show only the average. `--no-raw` still works |
+| `--responses LIST` | Draw only these responses, comma-separated: ids or `positive`, `negative`, `neutral`, `nonresponse`. Default all |
 | `--recessions` | Shade NBER recessions |
 | `-m, --measure share\|index` | Response shares (default) or the index score |
 | `--start`, `--end` | Displayed range. Defaults to the start of monthly data, usually January 1978 |
@@ -94,7 +95,7 @@ Builds a chart from the same validated data `get` returns. Needs the `charts` ex
 | `--force` | Overwrite existing files |
 | `-q, --quiet` | As for `get` |
 
-HTML fills the width of its container unless you pass `--width`. An unknown theme or a font value that isn't a single family name fails before anything is fetched. See [charts.md](charts.md).
+HTML fills the width of its container unless you pass `--width`. An unknown theme or response, or a font value that isn't a single family name, fails before anything is fetched. See [charts.md](charts.md).
 
 ## `themes`
 

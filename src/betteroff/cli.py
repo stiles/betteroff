@@ -386,9 +386,23 @@ def chart_cmd(
     rolling: Annotated[
         int | None, typer.Option('--rolling', help='Trailing average over N calendar months.')
     ] = None,
-    no_raw: Annotated[
-        bool, typer.Option('--no-raw', help='Hide monthly lines behind a rolling average.')
-    ] = False,
+    show_monthly: Annotated[
+        bool,
+        typer.Option(
+            '--monthly/--no-monthly',
+            help='Draw thin monthly lines behind a rolling average. --no-monthly shows only '
+            'the average.',
+        ),
+    ] = True,
+    no_raw: Annotated[bool, typer.Option('--no-raw', hidden=True)] = False,
+    responses: Annotated[
+        str | None,
+        typer.Option(
+            '--responses',
+            help='Responses to draw, comma-separated: ids from `betteroff describe` or '
+            'positive, negative, neutral, nonresponse. Defaults to all.',
+        ),
+    ] = None,
     recessions: Annotated[
         bool, typer.Option('--recessions', help='Shade NBER recessions.')
     ] = False,
@@ -434,6 +448,7 @@ def chart_cmd(
         require_altair,
         resolve_font,
         save_chart,
+        select_responses,
     )
     from .export import check_writable, resolve_format, sidecar, sidecar_path, write_sidecar
     from .themes import load_theme
@@ -443,6 +458,8 @@ def chart_cmd(
     q = load_catalog().resolve(question)
     chosen_theme = load_theme(theme)
     chosen_font = resolve_font(font)
+    selected = select_responses(q, responses, measure)
+    show_monthly = show_monthly and not no_raw
     if output is None:
         chosen = resolve_format(None, fmt, CHART_FORMATS, chart_format, 'html')
         output = Path(f'{q.id}.{chosen}')
@@ -454,7 +471,8 @@ def chart_cmd(
     chart = build_chart(
         ds,
         rolling=rolling,
-        raw=not no_raw,
+        monthly=show_monthly,
+        responses=selected,
         recessions=recessions,
         start=start,
         end=end,
@@ -469,7 +487,8 @@ def chart_cmd(
         'format': chosen,
         'chart': {
             'rolling': rolling,
-            'raw': not no_raw,
+            'monthly': show_monthly,
+            'responses': selected,
             'recessions': recessions,
             'start': start,
             'end': end,

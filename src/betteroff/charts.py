@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from functools import cache
@@ -51,6 +52,7 @@ RECESSIONS_SOURCE = 'NBER Business Cycle Dating Committee'
 RECESSIONS_URL = 'https://www.nber.org/research/data/us-business-cycle-expansions-and-contractions'
 RECESSIONS_CHECKED = '2026-10-12'
 CHART_FORMATS = ('html', 'svg', 'png', 'pdf', 'vl.json')
+POLARITIES = ('positive', 'neutral', 'negative', 'nonresponse')
 
 
 def require_altair() -> Any:
@@ -98,6 +100,43 @@ def _line_styles(question: Question) -> tuple[dict[str, list[int]], dict[str, fl
             dashes[r.id] = [1, 0]
             widths[r.id] = LINE_WIDTH
     return dashes, widths
+
+
+def select_responses(
+    question: Question, responses: str | Sequence[str] | None, measure: str = 'share'
+) -> list[str] | None:
+    """Response ids to draw, in catalog order, from ids and polarity names.
+
+    A string is split on commas. None means every response.
+    """
+    if responses is None:
+        return None
+    if measure == 'index':
+        raise InputError(
+            'Responses can only be chosen for shares, not the index score.',
+            'Remove the response selection, or chart shares instead.',
+        )
+    items = responses.split(',') if isinstance(responses, str) else list(responses)
+    wanted = [str(i).strip() for i in items if str(i).strip()]
+    ids = [r.id for r in question.responses]
+    valid = ', '.join(
+        [*ids, *(p for p in POLARITIES if any(r.polarity == p for r in question.responses))]
+    )
+    if not wanted:
+        raise InputError('No responses given.', f'Use one or more of: {valid}.')
+    unknown = [w for w in wanted if w not in ids and w not in POLARITIES]
+    if unknown:
+        raise InputError(
+            f'Table {question.table} has no response {", ".join(repr(u) for u in unknown)}.',
+            f'Use one or more of: {valid}.',
+        )
+    chosen = [r.id for r in question.responses if r.id in wanted or r.polarity in wanted]
+    if not chosen:
+        raise InputError(
+            f'Table {question.table} has no {" or ".join(wanted)} responses.',
+            f'Use one or more of: {valid}.',
+        )
+    return chosen
 
 
 def monthly(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
@@ -221,7 +260,8 @@ def build_chart(
     dataset: Dataset,
     *,
     rolling: int | None = None,
-    raw: bool = True,
+    monthly: bool = True,
+    responses: str | Sequence[str] | None = None,
     recessions: bool = False,
     start: str | date | None = None,
     end: str | date | None = None,
@@ -230,6 +270,7 @@ def build_chart(
     container: bool = False,
     theme: str | Path | Theme | None = None,
     font: str | None = None,
+    raw: bool | None = None,
 ) -> alt.LayerChart:
     """Build the standard exploratory chart.
 
@@ -238,6 +279,11 @@ def build_chart(
     theme name, a path to a theme TOML file or a `Theme`. `font` is one font family
     name; it defaults to $BETTEROFF_FONT, then Inter, and falls back to Helvetica,
     Arial and sans-serif.
+
+    `monthly` draws thin monthly lines behind a rolling average; it has no effect
+    without `rolling`. `responses` limits the lines to response ids or polarity
+    names ("positive", "negative", "neutral", "nonresponse"), as a list or a
+    comma-separated string. `raw` is the old name for `monthly`.
     """
     alt = require_altair()
     catalog = load_catalog()
@@ -245,9 +291,12 @@ def build_chart(
     th = load_theme(theme)
     family = resolve_font(font)
     font_css = font_stack(family)
+    if raw is not None:
+        monthly = raw
+    selected = select_responses(q, responses, dataset.measure)
     prep = prepare(dataset, rolling, start, end)
     is_index = dataset.measure == 'index'
-    columns = prep.columns
+    columns = selected or prep.columns
 
     if is_index:
         labels = {'index': catalog.index_label}
@@ -389,7 +438,7 @@ def build_chart(
         )
 
     main_long = _long(prep.main, columns, labels, q)
-    if prep.raw is not None and raw:
+    if prep.raw is not None and monthly:
         raw_long = _long(prep.raw, columns, labels, q)
         layers.append(
             alt.Chart(raw_long)
@@ -508,8 +557,11 @@ def build_chart(
         subtitle = ['Percent of respondents']
     if rolling:
         subtitle[0] += f', {rolling}-month trailing average'
-        if raw:
+        if monthly:
             subtitle[0] += '; thin lines show monthly values'
+    if selected and len(selected) < len(prep.columns):
+        hidden = [labels[c] for c in prep.columns if c not in selected]
+        subtitle.append(f'Not shown: {"; ".join(hidden)}')
     shown = prep.raw if prep.raw is not None else prep.main
     if shown[columns].isna().all(axis=1).any():
         subtitle.append(

@@ -57,7 +57,8 @@ Each `[[jobs]]` table:
 | `wide` | `false` | Wide data files |
 | `start`, `end` | full range | Months to include in data files and charts |
 | `rolling` | none | Trailing average for charts |
-| `raw` | `true` | Show monthly lines behind a rolling average |
+| `monthly` | `true` | Show monthly lines behind a rolling average. `raw`, the old name, still works |
+| `responses` | all | Responses to draw: a list of ids or `positive`, `negative`, `neutral`, `nonresponse` |
 | `recessions` | `false` | Shade NBER recessions |
 | `width`, `height` | 960, 540 | Chart frame size |
 | `theme` | `okabe-ito` | Color theme name, or a `.toml` theme file relative to the recipe |

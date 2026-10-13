@@ -210,6 +210,34 @@ def test_chart_font_recorded(source, gov_xls, tmp_path, monkeypatch):
     assert meta['export']['chart']['font'] == 'Work Sans'
 
 
+def test_chart_monthly_and_responses(source, gov_xls, tmp_path):
+    source.queue = [gov_xls]
+    out = tmp_path / 'g.vl.json'
+    args = ['chart', '34', '--rolling', '3', '--no-monthly', '--responses', 'positive,poor_job']
+    assert run(*args, '-o', str(out)).exit_code == 0
+    chart = json.loads((tmp_path / 'g.vl.json.meta.json').read_text())['export']['chart']
+    assert chart['monthly'] is False
+    assert chart['responses'] == ['good_job', 'poor_job']
+    spec = json.loads(out.read_text())
+    marks = [
+        la['mark'] if isinstance(la['mark'], str) else la['mark']['type'] for la in spec['layer']
+    ]
+    assert marks.count('line') == 1
+    # The old flag still works.
+    assert (
+        run('chart', '34', '--rolling', '3', '--no-raw', '-o', str(out), '--force').exit_code == 0
+    )
+    chart = json.loads((tmp_path / 'g.vl.json.meta.json').read_text())['export']['chart']
+    assert chart['monthly'] is False and chart['responses'] is None
+
+
+def test_unknown_response_fails_before_fetching(source, tmp_path):
+    result = run('chart', '34', '--responses', 'better_off', '-o', str(tmp_path / 'g.html'))
+    assert result.exit_code == 2
+    assert 'good_job' in result.stderr
+    assert source.calls == 0
+
+
 def test_bad_font_fails_before_fetching(source, tmp_path):
     result = run('chart', '34', '--font', 'Inter, Arial', '-o', str(tmp_path / 'g.html'))
     assert result.exit_code == 2

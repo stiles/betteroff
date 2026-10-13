@@ -52,7 +52,8 @@ ds = bo.get(
 ```python
 chart = ds.chart(
     rolling=12,         # trailing mean over 12 calendar months
-    raw=True,           # thin monthly lines behind the average
+    monthly=True,       # thin monthly lines behind the average; raw= is the old name
+    responses=None,     # e.g. ['positive', 'negative'] or 'better_off,worse_off'
     recessions=True,    # NBER bands
     start='2000',       # displayed range; rolling is computed on full history first
     end=None,
