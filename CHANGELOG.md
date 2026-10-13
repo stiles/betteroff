@@ -4,6 +4,8 @@ All notable changes to Betteroff. Versions follow [semantic versioning](https://
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-12
+
 First release.
 
 - Catalog of 18 Surveys of Consumers tables in the historical three-category layout, searchable offline by id, table number, title, keywords and wording.
