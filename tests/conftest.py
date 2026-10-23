@@ -129,7 +129,11 @@ def gov_xls(gov) -> bytes:
 def inflation_rows() -> list[tuple[int, int, Sequence[float | str | None]]]:
     """Synthetic rows for inflation tables: 1 pre-1978 row with 'NA', then 24 monthly rows."""
     rows: list[tuple[int, int, Sequence[float | str | None]]] = [
-        (1977, 12, [5, 15, 10, 15, 15, 10, 10, 10, 5, 5, 100, 'NA', 'NA', 'NA', 'NA', 'NA', 'NA', 500])
+        (
+            1977,
+            12,
+            [5, 15, 10, 15, 15, 10, 10, 10, 5, 5, 100, 'NA', 'NA', 'NA', 'NA', 'NA', 'NA', 500],
+        )
     ]
     for i in range(24):
         year, month = 1978 + i // 12, i % 12 + 1

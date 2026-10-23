@@ -41,7 +41,10 @@ def parse_date(value: str | date | None, name: str = 'date') -> date | None:
 
 
 def check_measure(measure: str | None, question: Question | None = None) -> str:
-    """Validate a measure, defaulting by kind: shares for tables, the index for indexes, median for inflation."""
+    """Validate a measure, defaulting by kind.
+
+    Shares for tables, the index for headline indexes, median for inflation.
+    """
     if not measure:
         if question is not None:
             if question.is_index:

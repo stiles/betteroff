@@ -2,7 +2,8 @@
 
 Layout, verified October 2026:
 Header row starts with "Date of Survey", followed by:
-Down, Same, 1-2, 3-4, 5, 6-9, 10-14, 15+, DK Up, DK,NA, Total, Median, 25th, 75th, Rng, Mean, Variance, Cases.
+Down, Same, 1-2, 3-4, 5, 6-9, 10-14, 15+, DK Up, DK,NA, Total,
+Median, 25th, 75th, Rng, Mean, Variance, Cases.
 """
 
 from __future__ import annotations

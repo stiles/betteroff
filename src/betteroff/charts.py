@@ -328,6 +328,7 @@ def build_chart(
     is_stat = q.is_inflation and dataset.measure in ('median', 'mean', 'summary')
     columns = selected or prep.columns
 
+    domain: list[float]
     ticks: list[int] | None
     if is_index:
         labels = {'index': q.label if q.is_index else catalog.index_label}

@@ -161,7 +161,14 @@ class Catalog:
                 'wording': q.wording.lower(),
                 'responses': ' '.join(r.label.lower() for r in q.responses),
             }
-            weights = {'id': 3, 'aliases': 3, 'title': 3, 'keywords': 2, 'wording': 1, 'responses': 1}
+            weights = {
+                'id': 3,
+                'aliases': 3,
+                'title': 3,
+                'keywords': 2,
+                'wording': 1,
+                'responses': 1,
+            }
             score = 0
             for term in terms:
                 hit = 0
