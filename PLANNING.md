@@ -291,6 +291,41 @@ Done when installation works on the supported platforms, the wheel contains the 
 
 Keep normal tests offline. A separate scheduled live check should fetch sparingly, validate privately and flag source changes without committing downloaded data to the repository. Pin the development environment with uv.lock; test reasonable dependency bounds before releasing.
 
+## Roadmap and future improvements
+
+Derived from post-v0.4 review to guide future releases:
+
+### 1. Python API ergonomics
+- **Direct exports with metadata sidecars**: Add `ds.export(path, wide=False)` to write data files paired with `.meta.json` sidecars directly in Python.
+- **Fluent dataset filtering**: Provide an immutable `ds.filter(start=..., end=..., measure=...)` method that returns a new `Dataset` instance without manual `dataclasses.replace`.
+- **Parquet support**: Add `parquet` to data formats for type-preserving interchange with DuckDB, Polars and PyArrow.
+- **Polars / Arrow interoperability**: Expose zero-copy conversion helpers or ensure clean type casting for non-pandas analytics.
+
+### 2. Network and performance
+- **Session and landing-page reuse**: Share an `httpx.Client` session across recipe jobs and cache the landing page links during a single run to avoid redundant TLS handshakes and page requests.
+- **RFC 7231 Retry-After**: Support HTTP-date timestamps in addition to integer seconds for accurate retry timing.
+- **Respecting quiet mode**: Ensure network retry messages route through logging or respect `-q/--quiet`.
+
+### 3. CLI usability and robustness
+- **Sidecar overwrite protection**: Ensure `check_writable` guards both the main file and its `.meta.json` sidecar.
+- **Recipe nested directories**: Create parent directories automatically when a recipe job name contains subdirectories.
+- **Cache management**: Add `cache clear` for purging specific or all snapshots, and show freshness status (`fresh`/`stale`) in `cache info`.
+- **Batch CLI retrieval**: Support retrieving multiple tables or questions in a single `betteroff get` command.
+
+### 4. Charting and visualization
+- **Dark mode theme support**: Offer a `--dark` flag or dark-palette styling (view background, contrast text, inverted grid, adapted recession fills).
+- **Graceful vl-convert handling**: Intercept `ImportError` on static export when `vl-convert-python` is absent and raise `MissingDependencyError`.
+- **Methodology annotations**: Surface break rules and tooltip context interactively.
+
+### 5. Data scope and future-proofing
+- **Inflation expectations (Tables 32 and 33)**: Support expected price changes over the next 12 months and next 5 years (mean, median, percentiles, distribution shares) via a dedicated inflation parser. *(Implemented in v0.5.0)*
+- **Demographic breakdowns**: Extend series beyond all-household aggregates to age, income, and education subgroups.
+- **Modern Excel (.xlsx) transition**: Guard against future format migrations by supporting ZIP/OpenXML signatures and an openpyxl fallback.
+
+### 6. Tooling and CI
+- **Python version matrix**: Test Python 3.12 and 3.13 in CI alongside 3.11 and 3.14.
+- **Coverage tracking**: Add `pytest-cov` to dev groups and maintain coverage metrics.
+
 ## Explicitly deferred
 
 No web service, data mirror, LLM query layer, respondent microdata, significance testing, arbitrary cross-survey comparisons, publication automation or full terminal dashboard in v0.1. Demographic series can follow once the all-household contract works. The first useful milestone is one command that retrieves table 34 correctly every time.

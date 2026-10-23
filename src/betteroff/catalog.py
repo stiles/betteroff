@@ -58,12 +58,17 @@ class Question:
     breaks: tuple[Break, ...] = ()
     monthly_since: date | None = None  # Only when later than the survey-wide date
     kind: str = 'table'
-    label: str = ''  # Short series label for headline indexes
+    label: str = ''  # Short series label for headline indexes or inflation series
+    aliases: tuple[str, ...] = ()
     source: IndexSource | None = None
 
     @property
     def is_index(self) -> bool:
         return self.kind == 'index'
+
+    @property
+    def is_inflation(self) -> bool:
+        return self.kind == 'inflation'
 
     def response(self, response_id: str) -> Response:
         for r in self.responses:
@@ -89,6 +94,8 @@ class Question:
             'kind': self.kind,
             'table': self.table,
             'title': self.title,
+            'label': self.label,
+            'aliases': list(self.aliases),
             'wording': self.wording,
             'responses': [r.__dict__ for r in self.responses],
             'notes': list(self.notes),
@@ -130,10 +137,10 @@ class Catalog:
         key = identifier.strip().lower()
         key = re.sub(r'^table\s*', '', key)
         for q in self.questions:
-            if key in (q.id, q.table.lower()):
+            if key in (q.id, q.table.lower(), *q.aliases):
                 return q
-        ids = [q.id for q in self.questions]
-        close = difflib.get_close_matches(key, ids, n=3)
+        candidates = [q.id for q in self.questions] + [a for q in self.questions for a in q.aliases]
+        close = difflib.get_close_matches(key, candidates, n=3)
         hint = f'Did you mean {", ".join(close)}?' if close else ''
         raise InputError(
             f'Unknown question or table "{identifier}". {hint}'.strip(),
@@ -148,12 +155,13 @@ class Catalog:
         for q in self.questions:
             fields = {
                 'id': q.id.replace('_', ' '),
+                'aliases': ' '.join(a.replace('_', ' ') for a in q.aliases),
                 'title': q.title.lower(),
                 'keywords': ' '.join(q.keywords).lower(),
                 'wording': q.wording.lower(),
                 'responses': ' '.join(r.label.lower() for r in q.responses),
             }
-            weights = {'id': 3, 'title': 3, 'keywords': 2, 'wording': 1, 'responses': 1}
+            weights = {'id': 3, 'aliases': 3, 'title': 3, 'keywords': 2, 'wording': 1, 'responses': 1}
             score = 0
             for term in terms:
                 hit = 0
@@ -203,12 +211,15 @@ def _question(raw: dict) -> Question:
         wording=raw['wording'],
         responses=responses,
         keywords=tuple(raw.get('keywords', ())),
+        aliases=tuple(raw.get('aliases', ())),
         notes=tuple(raw.get('notes', ())),
         breaks=tuple(
             Break(date.fromisoformat(b['date']), b['label'], bool(b['comparable']))
             for b in raw.get('breaks', ())
         ),
         monthly_since=date.fromisoformat(raw['monthly_since']) if 'monthly_since' in raw else None,
+        kind=raw.get('kind', 'table'),
+        label=raw.get('label', ''),
     )
 
 

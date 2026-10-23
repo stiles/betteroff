@@ -48,10 +48,70 @@ def validate_index(
     return list(parsed.flags)
 
 
+def validate_inflation(
+    parsed: ParsedTable, question: Question, today: date | None = None
+) -> list[dict]:
+    """Checks for an inflation / price expectations table."""
+    frame = parsed.frame
+    today = today or date.today()
+
+    if frame['date'].duplicated().any():
+        raise _fail(question, 'duplicate months')
+    latest = frame['date'].max().date()
+    if latest > today.replace(day=1):
+        raise _fail(question, f'latest month {latest:%B %Y} is in the future')
+    if (frame['cases'] <= 0).any():
+        raise _fail(question, 'a case count is zero or negative')
+
+    med = frame['median'].dropna()
+    if ((med < -20) | (med > 50)).any():
+        raise _fail(question, 'an inflation median is outside reasonable bounds (-20 to 50%)')
+    mean_val = frame['mean'].dropna()
+    if ((mean_val < -20) | (mean_val > 50)).any():
+        raise _fail(question, 'an inflation mean is outside reasonable bounds (-20 to 50%)')
+
+    flags: list[dict] = []
+
+    def flag(mask: pd.Series, check: str, detail: pd.Series) -> None:
+        for idx in frame.index[mask.fillna(False).astype(bool)][:MAX_FLAGS_PER_CHECK]:
+            flags.append(
+                {
+                    'date': f'{frame.at[idx, "date"]:%Y-%m-%d}',
+                    'check': check,
+                    'detail': str(detail.at[idx]),
+                }
+            )
+
+    total_off = (frame['total'] - 100).abs() > 0.5
+    flag(total_off, 'total_not_100', 'total ' + frame['total'].astype(str))
+
+    bracket_ids = [r.id for r in question.responses]
+    shares = frame[bracket_ids]
+    complete = shares.notna().all(axis=1)
+    diff = shares.sum(axis=1) - frame['total']
+    flag(
+        complete & (diff.abs() > SUM_TOLERANCE),
+        'shares_do_not_sum_to_total',
+        'difference ' + diff.round(1).astype(str),
+    )
+
+    if parsed.wording and _alnum(parsed.wording) != _alnum(question.wording):
+        flags.append(
+            {
+                'date': None,
+                'check': 'wording_changed',
+                'detail': f'Source wording now reads: {parsed.wording}',
+            }
+        )
+    return flags
+
+
 def validate(parsed: ParsedTable, question: Question, today: date | None = None) -> list[dict]:
     """Raise on impossible data; return a list of flags for suspicious rows."""
     if question.is_index:
         return validate_index(parsed, question, today)
+    if question.is_inflation:
+        return validate_inflation(parsed, question, today)
     frame = parsed.frame
     ids = [r.id for r in question.responses]
     shares = frame[ids]

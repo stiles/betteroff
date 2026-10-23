@@ -122,8 +122,22 @@ def select_responses(
             'Responses can only be chosen for shares, not the index score.',
             'Remove the response selection, or chart shares instead.',
         )
+    if measure in ('median', 'mean'):
+        raise InputError(
+            f'Responses can only be chosen for shares, not {measure}.',
+            'Remove the response selection, or chart shares instead.',
+        )
     items = responses.split(',') if isinstance(responses, str) else list(responses)
     wanted = [str(i).strip() for i in items if str(i).strip()]
+    if question.is_inflation and measure == 'summary':
+        summary_cols = ['median', 'mean', 'p25', 'p75', 'rng']
+        chosen = [c for c in summary_cols if c in wanted]
+        if not chosen:
+            raise InputError(
+                'No valid summary metrics given.',
+                f'Use one or more of: {", ".join(summary_cols)}.',
+            )
+        return chosen
     ids = [r.id for r in question.responses]
     valid = ', '.join(
         [*ids, *(p for p in POLARITIES if any(r.polarity == p for r in question.responses))]
@@ -311,6 +325,7 @@ def build_chart(
     selected = select_responses(q, responses, dataset.measure)
     prep = prepare(dataset, rolling, start, end)
     is_index = dataset.measure == 'index'
+    is_stat = q.is_inflation and dataset.measure in ('median', 'mean', 'summary')
     columns = selected or prep.columns
 
     ticks: list[int] | None
@@ -331,6 +346,52 @@ def build_chart(
             ]
             ticks = None
         unit_suffix = ''
+    elif is_stat:
+        stat_labels = {
+            'median': 'Median',
+            'mean': 'Mean',
+            'p25': '25th percentile',
+            'p75': '75th percentile',
+            'rng': 'Interquartile range',
+        }
+        labels = {c: stat_labels.get(c, c.title()) for c in columns}
+        stat_colors = {
+            'median': th.index,
+            'mean': th.colors['positive'][0] if len(columns) > 1 else th.index,
+            'p25': '#7a7a7a',
+            'p75': '#7a7a7a',
+            'rng': '#a0a0a0',
+        }
+        stat_dashes: dict[str, list[int]] = {
+            'median': [1, 0],
+            'mean': [4, 3] if len(columns) > 1 else [1, 0],
+            'p25': [2, 2],
+            'p75': [2, 2],
+            'rng': [1, 2],
+        }
+        stat_widths: dict[str, float] = {
+            'median': LINE_WIDTH,
+            'mean': LINE_WIDTH,
+            'p25': 1.5,
+            'p75': 1.5,
+            'rng': 1.25,
+        }
+        colors = {c: stat_colors.get(c, th.index) for c in columns}
+        label_colors = colors
+        dashes = {c: stat_dashes.get(c, [1, 0]) for c in columns}
+        widths = {c: stat_widths.get(c, LINE_WIDTH) for c in columns}
+        drawn = prep.raw if prep.raw is not None and monthly else prep.main
+        vals = drawn[columns].dropna(how='all')
+        if not vals.empty:
+            v_min = float(vals.min().min())
+            v_max = float(vals.max().max())
+            lo = min(0.0, float(math.floor(v_min)))
+            hi = max(6.0, float(math.ceil(v_max) + 1.0))
+            domain = [lo, hi]
+        else:
+            domain = [0.0, 10.0]
+        ticks = None
+        unit_suffix = ' (%)'
     else:
         labels = {r.id: r.label for r in q.responses}
         colors = _shades(q, th.colors)
@@ -369,9 +430,12 @@ def build_chart(
             labelOverlap=True,
         ),
     )
-    label_expr = (
-        "datum.value == 100 ? datum.label + '%' : datum.label" if not is_index else alt.Undefined
-    )
+    if is_index:
+        label_expr = alt.Undefined
+    elif is_stat:
+        label_expr = "datum.label + '%'"
+    else:
+        label_expr = "datum.value == 100 ? datum.label + '%' : datum.label"
     y = alt.Y(
         'value:Q',
         title=None,
@@ -450,6 +514,13 @@ def build_chart(
             .encode(y=y)
         )
 
+    if is_stat and domain[0] < 0:
+        layers.append(
+            alt.Chart(pd.DataFrame({'value': [0]}))
+            .mark_rule(color='#9a9a9a', strokeWidth=1)
+            .encode(y=y)
+        )
+
     visible_breaks = [b for b in q.breaks if prep.start < pd.Timestamp(b.date) <= prep.end]
     if visible_breaks:
         brk = pd.DataFrame(
@@ -506,7 +577,7 @@ def build_chart(
     # One tooltip per month: an invisible rule carrying every response's value.
     tip = prep.main[['date', *columns]].copy()
     tooltip = [alt.Tooltip('date:T', title='Month', format='%B %Y')]
-    fmt = '.1f' if rolling else '.0f'
+    fmt = '.1f' if (rolling or is_stat) else '.0f'
     for c in columns:
         title = f'{labels[c]}{unit_suffix}'
         if rolling:
@@ -517,7 +588,9 @@ def build_chart(
             tip[f'{c}__monthly'] = prep.raw[c].to_numpy()
             tooltip.append(
                 alt.Tooltip(
-                    f'{c}__monthly:Q', title=f'{labels[c]}, monthly{unit_suffix}', format='.0f'
+                    f'{c}__monthly:Q',
+                    title=f'{labels[c]}, monthly{unit_suffix}',
+                    format='.1f' if is_stat else '.0f',
                 )
             )
     if q.is_index:
@@ -602,6 +675,15 @@ def build_chart(
         subtitle = [f'Index, {catalog.headline.base}']
     elif is_index:
         subtitle = [f'{catalog.index_label}: percent favorable minus percent unfavorable, plus 100']
+    elif q.is_inflation:
+        if dataset.measure == 'median':
+            subtitle = ['Median expected price change per year, percent']
+        elif dataset.measure == 'mean':
+            subtitle = ['Mean expected price change per year, percent']
+        elif dataset.measure == 'summary':
+            subtitle = ['Expected price change per year, percent']
+        else:
+            subtitle = ['Percent of respondents']
     else:
         subtitle = ['Percent of respondents']
     if rolling:

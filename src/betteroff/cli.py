@@ -218,6 +218,14 @@ def describe_cmd(
             f"Units: index, {catalog.headline.base}. Once Michigan releases a month's "
             'preliminary reading, it is included and marked preliminary until the final arrives.'
         )
+    elif q.is_inflation:
+        out.print(f'[dim]Table {q.table} · id {q.id} · all households[/dim]\n')
+        out.print(f'"{escape(q.wording)}"\n')
+        out.print(
+            'Units: percent expected price change per year (median by default).\n'
+            '[bold]--measure summary[/bold] gives median, mean and percentiles; '
+            '[bold]--measure share[/bold] gives the distribution brackets.'
+        )
     else:
         out.print(f'[dim]Table {q.table} · id {q.id} · all households[/dim]\n')
         out.print(f'"{escape(q.wording)}"\n')
@@ -266,13 +274,27 @@ def _describe_recent(ds: Dataset) -> None:
         f'{meta["coverage"]["latest_period"]})[/dim]'
     )
     table = Table(box=None, pad_edge=False, header_style='bold')
-    table.add_column('Response' if not ds.question.is_index else 'Series')
+    table.add_column(
+        'Response' if not (ds.question.is_index or ds.question.is_inflation) else 'Series'
+    )
     for _, row in recent.iterrows():
         table.add_column(_month_label(row), justify='right')
     table.add_column('Last 24 months', no_wrap=True)
     table.add_column('Range', style='dim', justify='right')
     if ds.question.is_index:
         series = [('index', ds.question.label)]
+    elif ds.question.is_inflation:
+        if ds.measure in ('median', 'mean'):
+            series = [(ds.measure, 'Median (%/yr)' if ds.measure == 'median' else 'Mean (%/yr)')]
+        elif ds.measure == 'summary':
+            series = [
+                ('median', 'Median (%/yr)'),
+                ('mean', 'Mean (%/yr)'),
+                ('p25', '25th pct'),
+                ('p75', '75th pct'),
+            ]
+        else:
+            series = [(r.id, r.label) for r in ds.question.responses]
     else:
         series = [(r.id, r.label) for r in ds.question.responses]
     for col, label in series:
@@ -376,6 +398,19 @@ def _print_table(ds: Dataset) -> None:
     q = ds.question
     if q.is_index:
         headers = {'index': q.label}
+    elif q.is_inflation:
+        if ds.measure in ('median', 'mean'):
+            headers = {ds.measure: ds.measure.title() + ' (%/yr)'}
+        elif ds.measure == 'summary':
+            headers = {
+                'median': 'Median (%/yr)',
+                'mean': 'Mean (%/yr)',
+                'p25': '25th',
+                'p75': '75th',
+                'rng': 'IQR',
+            }
+        else:
+            headers = {r.id: r.label for r in q.responses}
     elif ds.measure == 'index':
         headers = {'index': load_catalog().index_label}
     else:
@@ -401,6 +436,12 @@ def _print_table(ds: Dataset) -> None:
     out.print(table)
     if q.is_index:
         unit = f'index values, {load_catalog().headline.base}'
+    elif q.is_inflation:
+        unit = (
+            'percent expected price change per year'
+            if ds.measure in ('median', 'mean', 'summary')
+            else 'percent of respondents'
+        )
     elif ds.measure == 'index':
         unit = 'index score'
     else:

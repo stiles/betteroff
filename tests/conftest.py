@@ -126,6 +126,106 @@ def gov_xls(gov) -> bytes:
     return build_xls(gov, gov_rows())
 
 
+def inflation_rows() -> list[tuple[int, int, Sequence[float | str | None]]]:
+    """Synthetic rows for inflation tables: 1 pre-1978 row with 'NA', then 24 monthly rows."""
+    rows: list[tuple[int, int, Sequence[float | str | None]]] = [
+        (1977, 12, [5, 15, 10, 15, 15, 10, 10, 10, 5, 5, 100, 'NA', 'NA', 'NA', 'NA', 'NA', 'NA', 500])
+    ]
+    for i in range(24):
+        year, month = 1978 + i // 12, i % 12 + 1
+        shares = [5, 15, 10, 15, 15, 10, 10, 10, 5, 5]
+        total = 100
+        median = 3.0 + (i % 5) * 0.2
+        p25 = 1.2
+        p75 = 5.4
+        rng = 4.2
+        mean = 3.5 + (i % 5) * 0.2
+        var = 12.0
+        cases = 700 + i
+        rows.append((year, month, [*shares, total, median, p25, p75, rng, mean, var, cases]))
+    return rows
+
+
+def build_inflation_xls(
+    question: Question,
+    rows: Iterable[tuple[int, int, Sequence[float | str | None]]],
+    *,
+    wording: str | None = None,
+    footer: Sequence[str] = (),
+    header_row: int = 6,
+) -> bytes:
+    import xlwt
+
+    book = xlwt.Workbook()
+    sheet = book.add_sheet(f'REDBK{question.table}')
+    text = wording if wording is not None else question.wording
+    half = len(text) // 2
+    cut = text.find(' ', half)
+    sheet.write(1, 4, f'The questions were: "{text[:cut]}')
+    sheet.write(2, 4, f'{text[cut + 1 :]}"')
+
+    sheet.write(header_row - 1, 6, 'PERCENT TO GO UP BY')
+    sheet.write(header_row - 1, 14, 'PERCENTILES')
+
+    header = [
+        'Date of Survey',
+        '',
+        'Down',
+        'Same',
+        '1-2%',
+        '3-4%',
+        '5%',
+        '6-9%',
+        '10-14%',
+        '15%+',
+        'DK Up',
+        'DK,NA',
+        'Total',
+        'Median',
+        '25th',
+        '75th',
+        'Rng',
+        'Mean',
+        'Variance',
+        'Cases',
+    ]
+    for c, v in enumerate(header):
+        if v:
+            sheet.write(header_row, c, v)
+
+    r = header_row + 1
+    for year, month, values in rows:
+        sheet.write(r, 0, MONTH_NAMES[month - 1])
+        sheet.write(r, 1, float(year))
+        for c, v in enumerate(values, start=2):
+            if v is not None:
+                sheet.write(r, c, v)
+        r += 1
+
+    for line in footer:
+        r += 1
+        sheet.write(r, 0, line)
+
+    buf = io.BytesIO()
+    book.save(buf)
+    return buf.getvalue()
+
+
+@pytest.fixture
+def table32(catalog) -> Question:
+    return catalog.resolve('32')
+
+
+@pytest.fixture
+def table33(catalog) -> Question:
+    return catalog.resolve('33')
+
+
+@pytest.fixture
+def table32_xls(table32) -> bytes:
+    return build_inflation_xls(table32, inflation_rows())
+
+
 @pytest.fixture(autouse=True)
 def isolated_cache(tmp_path, monkeypatch) -> Cache:
     root = tmp_path / 'cache'

@@ -13,13 +13,24 @@ def test_identifiers_are_unique(catalog):
 
 def test_every_question_supports_the_index(catalog):
     for q in catalog.questions:
-        if q.is_index:
+        if q.is_index or q.is_inflation:
             continue
         polarities = [r.polarity for r in q.responses]
         assert polarities.count('positive') == 1, q.id
         assert polarities.count('negative') == 1, q.id
         assert set(polarities) <= set(POLARITIES)
         assert len({r.id for r in q.responses}) == len(q.responses)
+
+
+def test_inflation_questions(catalog):
+    for q in catalog.questions:
+        if not q.is_inflation:
+            continue
+        assert q.table in ('32', '33')
+        assert len(q.responses) == 10
+        assert q.responses[0].id == 'down'
+        assert q.responses[1].id == 'same'
+        assert q.responses[-1].id == 'dk_na'
 
 
 @pytest.mark.parametrize(

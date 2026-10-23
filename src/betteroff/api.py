@@ -15,7 +15,7 @@ from .cache import Cache, Snapshot, now_utc
 from .catalog import Question, load_catalog
 from .errors import FetchError, InputError
 from .models import Dataset, check_measure, parse_date
-from .parsers import headline, historical
+from .parsers import headline, historical, inflation
 
 log = logging.getLogger('betteroff')
 METADATA_SCHEMA_VERSION = 1
@@ -77,7 +77,11 @@ def compare_snapshots(old: pd.DataFrame, new: pd.DataFrame, columns: list[str]) 
 
 
 def _parser(question: Question) -> Any:
-    return headline if question.is_index else historical
+    if question.is_index:
+        return headline
+    if question.is_inflation:
+        return inflation
+    return historical
 
 
 def _parse_and_validate(content: bytes, question: Question) -> tuple[Any, list[dict]]:
@@ -177,7 +181,10 @@ def load(
         except Exception:  # an unreadable old snapshot shouldn't block a good new one
             old = None
         if old is not None:
-            columns = [*(r.id for r in question.responses), 'index']
+            if question.is_inflation:
+                columns = ['median', 'mean', *(r.id for r in question.responses)]
+            else:
+                columns = [*(r.id for r in question.responses), 'index']
             revisions = compare_snapshots(old.frame, frame, columns)
             revisions['previous_snapshot'] = current.id
             _report_revisions(question, revisions)
@@ -253,6 +260,18 @@ def build_metadata(
             'download_urls': [question.source.history_url, question.source.current_url],
             'code': question.table,
             'release_status': 'preliminary' if latest_prelim else 'final',
+            'usage_agreement': catalog.agreement_url,
+        }
+    elif question.is_inflation:
+        question_meta = question.to_dict()
+        units = {'median': 'percent', 'mean': 'percent', 'summary': 'percent', 'share': 'percent'}
+        source = {
+            'publisher': catalog.attribution,
+            'landing_url': catalog.landing_url,
+            'download_url': snapshot.url,
+            'table': question.table,
+            'source_period': snapshot.source_period,
+            'release_status': 'unknown',
             'usage_agreement': catalog.agreement_url,
         }
     else:

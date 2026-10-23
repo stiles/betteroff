@@ -14,8 +14,14 @@ from .errors import InputError
 if TYPE_CHECKING:
     import altair as alt
 
-MEASURES = ('share', 'index')
-UNITS = {'share': 'percent', 'index': 'index'}
+MEASURES = ('share', 'index', 'median', 'mean', 'summary')
+UNITS = {
+    'share': 'percent',
+    'index': 'index',
+    'median': 'percent',
+    'mean': 'percent',
+    'summary': 'percent',
+}
 
 
 def parse_date(value: str | date | None, name: str = 'date') -> date | None:
@@ -35,16 +41,36 @@ def parse_date(value: str | date | None, name: str = 'date') -> date | None:
 
 
 def check_measure(measure: str | None, question: Question | None = None) -> str:
-    """Validate a measure, defaulting by kind: shares for tables, the index for indexes."""
+    """Validate a measure, defaulting by kind: shares for tables, the index for indexes, median for inflation."""
     if not measure:
-        return 'index' if question is not None and question.is_index else 'share'
+        if question is not None:
+            if question.is_index:
+                return 'index'
+            if question.is_inflation:
+                return 'median'
+        return 'share'
     if measure not in MEASURES:
         raise InputError(f'Unknown measure "{measure}".', f'Use one of: {", ".join(MEASURES)}.')
-    if question is not None and question.is_index and measure != 'index':
-        raise InputError(
-            f'{question.title} is an index; it has no response shares.',
-            'Drop --measure, or use --measure index.',
-        )
+    if question is not None:
+        if question.is_index and measure != 'index':
+            raise InputError(
+                f'{question.title} is an index; it has no response shares or summary statistics.',
+                'Drop --measure, or use --measure index.',
+            )
+        if question.is_inflation and measure == 'index':
+            raise InputError(
+                f'{question.title} is an inflation table; it has no index score.',
+                'Use --measure median (default), summary or share.',
+            )
+        if (
+            not question.is_inflation
+            and not question.is_index
+            and measure in ('median', 'mean', 'summary')
+        ):
+            raise InputError(
+                f'{question.title} has no {measure} measure.',
+                'Use --measure share (default) or --measure index.',
+            )
     return measure
 
 
@@ -78,6 +104,14 @@ class Dataset:
 
     @property
     def value_columns(self) -> list[str]:
+        if self.question.is_inflation:
+            if self.measure == 'median':
+                return ['median']
+            if self.measure == 'mean':
+                return ['mean']
+            if self.measure == 'summary':
+                return ['median', 'mean', 'p25', 'p75', 'rng']
+            return [r.id for r in self.question.responses]
         if self.measure == 'index':
             return ['index']
         return [r.id for r in self.question.responses]
@@ -97,6 +131,76 @@ class Dataset:
                     'value': wide['index'].astype('float64'),
                     'unit': 'index',
                     'preliminary': wide['preliminary'].astype(bool),
+                    'population': self.metadata.get('population', 'all_households'),
+                }
+            )
+        if self.question.is_inflation:
+            if self.measure in ('median', 'mean'):
+                label = 'Median' if self.measure == 'median' else 'Mean'
+                return pd.DataFrame(
+                    {
+                        'date': wide['date'],
+                        'question_id': self.question.id,
+                        'measure': self.measure,
+                        'response_id': self.measure,
+                        'response_label': label,
+                        'value': wide[self.measure].astype('float64'),
+                        'unit': 'percent',
+                        'cases': wide['cases'].astype('Int64'),
+                        'population': self.metadata.get('population', 'all_households'),
+                    }
+                )
+            if self.measure == 'summary':
+                summary_labels = {
+                    'median': 'Median',
+                    'mean': 'Mean',
+                    'p25': '25th percentile',
+                    'p75': '75th percentile',
+                    'rng': 'Interquartile range',
+                }
+                tidy = wide.melt(
+                    id_vars=['date', 'cases'],
+                    value_vars=self.value_columns,
+                    var_name='response_id',
+                    value_name='value',
+                )
+                order = {rid: i for i, rid in enumerate(self.value_columns)}
+                tidy['_order'] = tidy['response_id'].map(order)
+                tidy = tidy.sort_values(['date', '_order'], ignore_index=True)
+                return pd.DataFrame(
+                    {
+                        'date': tidy['date'],
+                        'question_id': self.question.id,
+                        'measure': 'summary',
+                        'response_id': tidy['response_id'],
+                        'response_label': tidy['response_id'].map(summary_labels),
+                        'value': tidy['value'].astype('float64'),
+                        'unit': 'percent',
+                        'cases': tidy['cases'].astype('Int64'),
+                        'population': self.metadata.get('population', 'all_households'),
+                    }
+                )
+            # measure == 'share'
+            labels = {r.id: r.source_label for r in self.question.responses}
+            tidy = wide.melt(
+                id_vars=['date', 'cases'],
+                value_vars=self.value_columns,
+                var_name='response_id',
+                value_name='value',
+            )
+            order = {rid: i for i, rid in enumerate(self.value_columns)}
+            tidy['_order'] = tidy['response_id'].map(order)
+            tidy = tidy.sort_values(['date', '_order'], ignore_index=True)
+            return pd.DataFrame(
+                {
+                    'date': tidy['date'],
+                    'question_id': self.question.id,
+                    'measure': 'share',
+                    'response_id': tidy['response_id'],
+                    'response_label': tidy['response_id'].map(labels),
+                    'value': tidy['value'].astype('float64'),
+                    'unit': 'percent',
+                    'cases': tidy['cases'].astype('Int64'),
                     'population': self.metadata.get('population', 'all_households'),
                 }
             )

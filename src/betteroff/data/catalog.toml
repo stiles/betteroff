@@ -247,6 +247,60 @@ responses = [
 ]
 
 [[questions]]
+id = "price_expectations"
+table = "32"
+title = "Expected change in prices during the next year"
+kind = "inflation"
+label = "1-year price expectations"
+aliases = ["price_expectations_1_year", "price_expectations_12_months", "inflation_expectations", "inflation_1_year"]
+wording = 'During the next 12 months, do you think that prices in general will go up, or go down, or stay where they are now?" and "By about what percent do you expect prices to go up, on the average, during the next 12 months?'
+keywords = ["prices", "inflation", "price expectations", "inflation expectations", "next year", "12 months", "cpi", "table 32"]
+notes = [
+    "Before January 1978, the 'Same' category includes 'Same' and 'Down'.",
+    "Median and percentiles began in January 1978.",
+]
+monthly_since = "1978-01-01"
+responses = [
+    { id = "down", label = "Prices go down", source_label = "Down", polarity = "positive" },
+    { id = "same", label = "Stay the same", source_label = "Same", polarity = "neutral" },
+    { id = "up_1_to_2", label = "Go up 1-2%", source_label = "1-2", polarity = "negative" },
+    { id = "up_3_to_4", label = "Go up 3-4%", source_label = "3-4", polarity = "negative" },
+    { id = "up_5", label = "Go up 5%", source_label = "5", polarity = "negative" },
+    { id = "up_6_to_9", label = "Go up 6-9%", source_label = "6-9", polarity = "negative" },
+    { id = "up_10_to_14", label = "Go up 10-14%", source_label = "10-14", polarity = "negative" },
+    { id = "up_15_plus", label = "Go up 15%+", source_label = "15+", polarity = "negative" },
+    { id = "dk_up", label = "Up, don't know %", source_label = "DK Up", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK,NA", polarity = "nonresponse" },
+]
+
+[[questions]]
+id = "price_expectations_5_years"
+table = "33"
+title = "Expected change in prices during the next 5 to 10 years"
+kind = "inflation"
+label = "5-year price expectations"
+aliases = ["price_expectations_5_10_years", "inflation_expectations_5_years", "inflation_5_years"]
+wording = 'What about the outlook for prices over the next 5 to 10 years? Do you think prices will be higher, about the same, or lower, 5 to 10 years from now?" and "By about what percent per year do you expect prices to go (up/down) on the average, during the next 5 to 10 years?'
+keywords = ["prices", "inflation", "price expectations", "inflation expectations", "five years", "5 years", "long run", "table 33"]
+notes = [
+    "Table covers the 5 to 10 year horizon.",
+    "Asked irregularly from 1979 to 1989; monthly since April 1990.",
+]
+monthly_since = "1990-04-01"
+responses = [
+    { id = "down", label = "Prices go down", source_label = "Down", polarity = "positive" },
+    { id = "same", label = "Stay the same", source_label = "Same", polarity = "neutral" },
+    { id = "up_1_to_2", label = "Go up 1-2%", source_label = "1-2", polarity = "negative" },
+    { id = "up_3_to_4", label = "Go up 3-4%", source_label = "3-4", polarity = "negative" },
+    { id = "up_5", label = "Go up 5%", source_label = "5", polarity = "negative" },
+    { id = "up_6_to_9", label = "Go up 6-9%", source_label = "6-9", polarity = "negative" },
+    { id = "up_10_to_14", label = "Go up 10-14%", source_label = "10-14", polarity = "negative" },
+    { id = "up_15_plus", label = "Go up 15%+", source_label = "15+", polarity = "negative" },
+    { id = "dk_up", label = "Up, don't know %", source_label = "DK Up", polarity = "negative" },
+    { id = "dk_na", label = "Don't know, no answer", source_label = "DK,NA", polarity = "nonresponse" },
+]
+
+[[questions]]
 id = "government_policy"
 table = "34"
 title = "Opinions about the government's economic policy"
