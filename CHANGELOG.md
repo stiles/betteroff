@@ -4,6 +4,11 @@ All notable changes to Betteroff. Versions follow [semantic versioning](https://
 
 ## [Unreleased]
 
+- Inflation expectations: expected price changes over the next 12 months (table 32, `price_expectations`) and the next 5 to 10 years (table 33, `price_expectations_5_years`), parsed from Michigan's distribution-and-summary layout.
+- Inflation questions take `--measure median` (the default), `mean`, `summary` (median, mean, 25th and 75th percentiles and interquartile range) or `share` (the distribution brackets). Charts of the summary statistics use a percent axis that can go below zero, and `--responses` picks which statistics to draw.
+- Questions can have aliases, such as `inflation_1_year` or `inflation_expectations_5_years`, which work anywhere an id does and count in search.
+- Question metadata in sidecars now includes `label` and `aliases`.
+
 ## [0.4.0] - 2026-10-13
 
 - Headline indexes: the Index of Consumer Sentiment (`ICS`, `consumer_sentiment`), Index of Current Economic Conditions (`ICC`, `current_conditions`) and Index of Consumer Expectations (`ICE`, `consumer_expectations`), from the CSV files on Michigan's main site. They aren't embargoed, so they include the latest final reading and the mid-month preliminary one.
