@@ -319,7 +319,7 @@ Derived from post-v0.4 review to guide future releases:
 
 ### 5. Data scope and future-proofing
 - **Inflation expectations (Tables 32 and 33)**: Support expected price changes over the next 12 months and next 5 years (mean, median, percentiles, distribution shares) via a dedicated inflation parser. *(Implemented in v0.5.0)*
-- **Demographic breakdowns**: Extend series beyond all-household aggregates to age, income, and education subgroups.
+- **Demographic and political-party breakdowns**: Extend beyond all-household aggregates to Michigan's published Index of Consumer Sentiment, Current, and Expected series by income tercile (table 2n), age group (3n), education group (4n), region (5a), and political party (5b).
 - **Modern Excel (.xlsx) transition**: Guard against future format migrations by supporting ZIP/OpenXML signatures and an openpyxl fallback.
 
 ### 6. Tooling and CI
