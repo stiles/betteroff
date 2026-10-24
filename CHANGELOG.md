@@ -4,6 +4,8 @@ All notable changes to Betteroff. Versions follow [semantic versioning](https://
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-24
+
 - Index breakdowns from Michigan's tables 2n to 5b: `betteroff get ICS --by income` (or ICC, ICE) gives the index within income terciles, and `--by age`, `education`, `region` and `party` work the same way. Each also has its own id, such as `consumer_sentiment_by_income`, and works in `describe`, `chart`, recipes (`by = "income"`) and `bo.get('ICS', by='income')`.
 - Breakdown rows name the group in `population` (`income:top_third`, `party:democrat`), wide output has one column per group, and sidecars list the groups under `question.groups` with a top-level `population` such as `by_income`. Charts use fixed group colors and fit the axis to the values; `--responses` picks groups by id.
 - A new parser reads the shared layout of tables 2n to 5b and fails if the banner, index blocks or group labels change. Validation flags months missing after a breakdown became monthly (`missing_month`) and months without a value for every group (`missing_group_value`).
