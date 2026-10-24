@@ -15,7 +15,7 @@ from .cache import Cache, Snapshot, now_utc
 from .catalog import Question, load_catalog
 from .errors import FetchError, InputError
 from .models import Dataset, check_measure, parse_date
-from .parsers import headline, historical, inflation
+from .parsers import breakdown, headline, historical, inflation
 
 log = logging.getLogger('betteroff')
 METADATA_SCHEMA_VERSION = 1
@@ -33,8 +33,15 @@ def list_questions() -> list[Question]:
     return list(load_catalog().questions)
 
 
-def describe(identifier: str) -> Question:
-    return load_catalog().resolve(identifier)
+def describe(identifier: str, by: str | None = None) -> Question:
+    return resolve(identifier, by)
+
+
+def resolve(identifier: str, by: str | None = None) -> Question:
+    """Catalog entry for an identifier, or its breakdown when `by` is given."""
+    catalog = load_catalog()
+    question = catalog.resolve(identifier)
+    return catalog.breakdown_of(question, by) if by else question
 
 
 def _period(ts: pd.Timestamp) -> str:
@@ -81,6 +88,8 @@ def _parser(question: Question) -> Any:
         return headline
     if question.is_inflation:
         return inflation
+    if question.is_breakdown:
+        return breakdown
     return historical
 
 
@@ -183,6 +192,8 @@ def load(
         if old is not None:
             if question.is_inflation:
                 columns = ['median', 'mean', *(r.id for r in question.responses)]
+            elif question.is_breakdown:
+                columns = [r.id for r in question.responses]
             else:
                 columns = [*(r.id for r in question.responses), 'index']
             revisions = compare_snapshots(old.frame, frame, columns)
@@ -274,6 +285,18 @@ def build_metadata(
             'release_status': 'unknown',
             'usage_agreement': catalog.agreement_url,
         }
+    elif question.is_breakdown:
+        question_meta = {**question.to_dict(), 'base': catalog.headline.base}
+        units = {'index': 'index'}
+        source = {
+            'publisher': catalog.attribution,
+            'landing_url': catalog.landing_url,
+            'download_url': snapshot.url,
+            'table': question.table,
+            'source_period': snapshot.source_period,
+            'release_status': 'unknown',
+            'usage_agreement': catalog.agreement_url,
+        }
     else:
         question_meta = {
             **question.to_dict(),
@@ -294,7 +317,7 @@ def build_metadata(
         'betteroff_version': __version__,
         'parser_version': _parser(question).PARSER_VERSION,
         'question': question_meta,
-        'population': catalog.population,
+        'population': (f'by_{question.breakdown.by}' if question.breakdown else catalog.population),
         'units': units,
         'source': source,
         'snapshot': {
@@ -320,14 +343,16 @@ def get(
     start: str | date | None = None,
     end: str | date | None = None,
     measure: str | None = None,
+    by: str | None = None,
     cache: Cache | None = None,
     client: Any = None,
 ) -> Dataset:
     """Fetch (or reuse a cached copy of) a table or index, validate it and return a Dataset.
 
     `measure` defaults to `share` for tables and `index` for headline indexes.
+    `by` breaks a headline index down by group, e.g. `get('ICS', by='party')`.
     """
-    question = load_catalog().resolve(identifier)
+    question = resolve(identifier, by)
     measure = check_measure(measure, question)
     start_d, end_d = parse_date(start, 'start'), parse_date(end, 'end')
     parsed, flags, snapshot, mode, revisions = load(

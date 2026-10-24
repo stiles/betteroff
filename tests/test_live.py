@@ -36,7 +36,7 @@ def raw_rows(content: bytes) -> list[list[object]]:
     return [r for r in rows if isinstance(r[1], float) and re.match(r'[A-Z][a-z]+$', str(r[0]))]
 
 
-TABLES = [q for q in CATALOG.questions if not q.is_index]
+TABLES = [q for q in CATALOG.questions if not q.is_index and not q.is_breakdown]
 
 
 @pytest.mark.parametrize('question', TABLES, ids=lambda q: f'{q.table}-{q.id}')
@@ -91,4 +91,41 @@ def test_headline_index_matches_the_data_site(client, question):
             assert value == pytest.approx(data_site[key], abs=0.05), (question.table, key)
             compared += 1
     assert compared > 500
+    time.sleep(1)
+
+
+BREAKDOWNS = [q for q in CATALOG.questions if q.is_breakdown]
+
+
+@pytest.mark.parametrize('question', BREAKDOWNS, ids=lambda q: q.id)
+def test_breakdown_matches_source_and_brackets_the_headline_index(client, question):
+    """Raw cells match, and the all-households index sits within the groups' range."""
+    from betteroff.fetch import download_index
+    from betteroff.parsers.breakdown import parse as parse_breakdown
+    from betteroff.parsers.headline import parse as parse_index
+
+    b = question.breakdown
+    assert b is not None
+    download = download_table(question.table, CATALOG.landing_url, client=client)
+    parsed = parse_breakdown(download.content, question)
+    flags = validate(parsed, question)
+    assert not [f for f in flags if f['check'] == 'missing_month'], flags
+
+    rows = raw_rows(download.content)
+    frame = parsed.frame
+    ids = [r.id for r in question.responses]
+    first = 2 + b.blocks.index(b.block) * len(ids)
+    assert len(rows) == len(frame)
+    for i in (0, len(rows) // 2, len(rows) - 1):
+        assert list(frame.loc[i, ids]) == [float(v) for v in rows[i][first : first + len(ids)]]
+
+    index = CATALOG.resolve(b.index_id)
+    assert index.source is not None
+    urls = [index.source.history_url, index.source.current_url]
+    headline = parse_index(
+        download_index(urls, CATALOG.headline.page_url, client=client).content, index
+    )
+    merged = frame.merge(headline.frame[['date', 'index']], on='date')
+    inside = merged['index'].between(merged[ids].min(axis=1), merged[ids].max(axis=1))
+    assert len(merged) > 100 and inside.mean() > 0.95, merged[~inside]
     time.sleep(1)

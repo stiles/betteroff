@@ -39,6 +39,38 @@ Michigan releases a preliminary reading in the middle of each month, from about 
 - Charts draw a preliminary latest month as an open dot and say so in the subtitle. Tooltips give each month's release.
 - When the final reading arrives, the revision report lists the month under `finalized` with both values, as a notice rather than a warning.
 
+## Index breakdowns
+
+Michigan's tables 2n, 3n, 4n, 5a and 5b give the three headline indexes within groups of respondents. Each table becomes three catalog entries, one per index, such as `consumer_sentiment_by_income`; `--by` with ICS, ICC or ICE picks one.
+
+| `--by` | Table | Groups (`population` values) | Monthly since |
+| --- | --- | --- | --- |
+| `income` | 2n | `bottom_third`, `middle_third`, `top_third` | October 1979, when readings start |
+| `age` | 3n | `age_18_34`, `age_35_54`, `age_55_plus` | January 1978 |
+| `education` | 4n | `high_school_or_less`, `some_college`, `college_degree` | January 1978 |
+| `region` | 5a | `northeast`, `north_central`, `south`, `west` | January 1978 |
+| `party` | 5b | `democrat`, `independent`, `republican` | February 2017 |
+
+The layout, verified in October 2026 for all five tables: a banner row naming the grouping (`RESPONDENT POLITICAL PARTY`), a row with `SENTIMENT INDEX`, `CURRENT INDEX` and `EXPECTED INDEX` over their blocks, then the group labels, split over two rows in tables 2n and 4n, ending in the "Date of Survey" row. Each block has one column per group in the same order. There's no total, index score, case count or question wording. Betteroff reads only the block for the index you asked for, but checks the banner, all three block labels and every group label, and stops if any of them change.
+
+How they differ from the all-households index:
+
+- **Population.** Tidy rows put the group in `population`, such as `income:bottom_third`, and keep `response_id` as `index`. The sidecar's top-level `population` is `by_income`, `by_party` and so on, and `question.groups` lists each group's id, label, source label and `population` value.
+- **Source and timing.** Breakdowns come from the embargoed detailed-data site, like the question tables, not the main site's CSV files. They have no preliminary readings and no `preliminary` column, and their latest month can trail the headline index.
+- **Scale.** Values are on the headline index scale (1966 = 100). The weekly live check confirms that the all-households index falls between the lowest and highest group value in at least 95 percent of shared months. In October 2026 it did in at least 99 percent for every breakdown.
+- **Not an average.** The groups needn't average to the all-households index. The tables don't say how respondents who can't be placed in a group are handled, such as those who don't report income or name another party.
+- **Changing groups.** A group is whoever fell into it when surveyed, so a group's index over time doesn't follow the same people. The share of adults with a college degree, for example, has grown a lot since 1978.
+
+What each grouping means, from Michigan's tables, [FAQ](https://data.sca.isr.umich.edu/faq.php) and current [web questionnaire](https://data.sca.isr.umich.edu/fetchdoc.php?docid=75445):
+
+- **Income.** Each month Michigan splits respondents into three equal-sized groups by reported household income, so the dollar range of each tercile changes every month. A tercile is a position in that month's sample, not a fixed income band.
+- **Age.** The respondent's age when surveyed, in three fixed bands. The questionnaire asks for month and year of birth.
+- **Education.** High school or less, some college and college degree. The questionnaire has eight levels, including associate's degrees and vocational certificates, and the table doesn't say which group those fall in.
+- **Region.** Where the respondent lives, labeled NE, NC, S and W. The names match the Census Bureau's four regions; North Central was its name for the Midwest until 1984. The table doesn't list the states.
+- **Party.** The questionnaire asks, "Generally speaking, do you usually think of yourself as a Republican, a Democrat, an Independent, or what?", with "Other" as a possible answer, then asks independents which party they feel closer to. Table 5b, labeled DEM, IND and REP, doesn't say how "Other" answers or independents who lean toward a party are counted. Party readings are irregular before February 2017: one month in 1980, a few in 1984-85 and 2006, and runs with gaps from 2008 to 2016.
+
+Charts start at each breakdown's monthly start unless you pass `--start`, and validation flags missing months only after it.
+
 ## When data appears
 
 Michigan publishes a preliminary and a final reading each month at [sca.isr.umich.edu](http://www.sca.isr.umich.edu/). The headline indexes are current. The detailed-data site that Betteroff reads for tables updates after an embargo that ends four weeks after the final release. In October 2026 the latest month available was August 2026.
@@ -70,6 +102,8 @@ Wide output has one row per month, one column per response id in catalog order, 
 
 Headline indexes have the same tidy fields with `measure` and `response_id` set to `index`, `response_label` set to the index's title and `unit` set to `index`. They have no `cases`, since Michigan's files don't give them, and add `preliminary`, true or false. Wide output is `date`, `index` and `preliminary`. Index values use a 1966 base period (1966 = 100).
 
+[Index breakdowns](#index-breakdowns) have one tidy row per month and group, with the same fields as a headline index except `preliminary`, and `population` naming the group, such as `party:republican`. Wide output is `date` and one column per group id, such as `democrat`, `independent` and `republican`.
+
 Betteroff does not round, rescale percentages to fractions, fill missing values with zero or drop categories. An unexpected category stops the run instead.
 
 ### The index score
@@ -92,8 +126,8 @@ Every file written with `-o`, by a recipe, or by `--meta` gets JSON metadata. A 
 | --- | --- |
 | `schema_version` | Metadata format version, now 1 |
 | `betteroff_version`, `parser_version` | Software that made the file |
-| `question` | Id, table, title, exact wording, responses with source labels and polarity, notes, breaks, index definition |
-| `population`, `units` | `all_households`; `percent` and `index` |
+| `question` | Id, table, title, exact wording, responses with source labels and polarity, notes, breaks, index definition. For a breakdown: `kind` `breakdown`, the `index` id, `by`, `by_label`, `groups` and `base` |
+| `population`, `units` | `all_households`, or `by_party` for a breakdown; `percent` and `index` |
 | `source` | Publisher, tables page, download URL, table, release period in the link, `release_status` (`unknown`: the file doesn't say whether readings are preliminary or final), usage agreement URL. For a headline index: the main site's tables page, both `download_urls`, the `code` and `release_status` `preliminary` or `final` |
 | `snapshot` | Short id, SHA-256 of the raw file, retrieval and last-check times in UTC, and `mode`: `fresh`, `cached`, `stale` or `offline` |
 | `coverage` | First and latest survey month, number of readings, start of monthly data and, for a headline index, `latest_preliminary` |
@@ -111,6 +145,7 @@ These stop the run with exit code 4 and leave the cache untouched:
 - A row whose date can't be read, a month listed twice, or a value that isn't a number or blank
 - A share outside 0 to 100, an index outside 0 to 200, or a case count of zero or less
 - A latest month in the future, or a response with no values at all
+- For a breakdown: a changed banner, index block label or group label, a block label that no longer sits over its columns, or an index value outside 0 to 200
 
 These are recorded in `quality_flags` and don't stop the run, because Michigan's own files contain a handful of them:
 
@@ -118,6 +153,8 @@ These are recorded in `quality_flags` and don't stop the run, because Michigan's
 - `index_does_not_match_shares`: the index differs from favorable minus unfavorable plus 100 by more than 1
 - `total_not_100`
 - `wording_changed`: the wording in the file no longer matches the catalog; this also raises a warning
+- `missing_month`: a breakdown has no reading for a month after its `monthly_since`
+- `missing_group_value`: a breakdown month lists no value for one or more groups
 
 In October 2026, seven of the 18 tables had between one and four flagged months, all before 1984.
 
@@ -168,3 +205,13 @@ For a headline index, a month that was preliminary and is now final isn't a revi
 2. Add a `[[questions]]` entry to `src/betteroff/data/catalog.toml` with an id, the table number, a sentence-case title, the wording copied exactly and each response's `source_label` exactly as the file has it. Set polarity from the index formula: the response that's added is `positive`, the one subtracted is `negative`.
 3. Add `notes`, `monthly_since` or `breaks` if the question changed or wasn't asked monthly.
 4. Run `uv run pytest -m live -k <table>` to parse it, validate it and compare the first, middle and last rows with the raw file.
+
+### Adding a breakdown
+
+All five published breakdown tables are in the catalog. If Michigan adds another with the same layout:
+
+1. Download the historical Excel file and the PDF. Confirm the banner, the three block labels and the group labels, and check the PDF, the FAQ and the questionnaire for how the groups are defined. Don't commit the files.
+2. Add a `[[breakdowns]]` entry to `catalog.toml` with the `table`, a short `by` name for `--by`, a `by_label`, the `banner` and one `groups` entry per column, with `source_label` exactly as the file has it. Join two-row labels with a space: `Bottom Third`.
+3. Pick group colors: an ordered light-to-dark ramp for ordered groups, distinct colors otherwise.
+4. Add `monthly_since` if readings were irregular, and notes on anything that limits comparisons with the all-households index.
+5. Run `uv run pytest -m live -k by_<name>` to compare raw cells and check that the all-households index sits within the groups' range.

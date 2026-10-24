@@ -108,10 +108,23 @@ def select_responses(
 ) -> list[str] | None:
     """Response ids to draw, in catalog order, from ids and polarity names.
 
-    A string is split on commas. None means every response.
+    A string is split on commas. None means every response. For a breakdown,
+    the ids are group ids such as "democrat".
     """
     if responses is None:
         return None
+    if question.is_breakdown:
+        items = responses.split(',') if isinstance(responses, str) else list(responses)
+        groups = {str(i).strip() for i in items if str(i).strip()}
+        ids = [r.id for r in question.responses]
+        unknown = sorted(groups - set(ids))
+        if unknown or not groups:
+            named = ', '.join(repr(u) for u in unknown) if unknown else 'none given'
+            raise InputError(
+                f'{question.title}: unknown group(s) {named}.',
+                f'Use one or more of: {", ".join(ids)}.',
+            )
+        return [rid for rid in ids if rid in groups]
     if question.is_index:
         raise InputError(
             f'{question.title} is a single index; it has no responses to choose.',
@@ -324,18 +337,33 @@ def build_chart(
         monthly = raw
     selected = select_responses(q, responses, dataset.measure)
     prep = prepare(dataset, rolling, start, end)
-    is_index = dataset.measure == 'index'
+    is_group = q.is_breakdown
+    is_index = dataset.measure == 'index' and not is_group
     is_stat = q.is_inflation and dataset.measure in ('median', 'mean', 'summary')
     columns = selected or prep.columns
 
     domain: list[float]
     ticks: list[int] | None
-    if is_index:
+    if is_group:
+        b = q.breakdown
+        assert b is not None
+        labels = {r.id: r.label for r in q.responses}
+        colors = dict(zip(labels, b.colors, strict=True))
+        label_colors = colors
+        dashes: dict[str, list[int]] = {c: [1, 0] for c in labels}
+        widths: dict[str, float] = {c: LINE_WIDTH for c in labels}
+        drawn = prep.raw if prep.raw is not None and monthly else prep.main
+        group_values = drawn[columns]
+        lowest, highest = float(group_values.min().min()), float(group_values.max().max())
+        domain = [int(math.floor(lowest / 10) * 10), int(math.ceil(highest / 10) * 10)]
+        ticks = None
+        unit_suffix = ''
+    elif is_index:
         labels = {'index': q.label if q.is_index else catalog.index_label}
         colors = {'index': th.index}
         label_colors = colors
-        dashes: dict[str, list[int]] = {'index': [1, 0]}
-        widths: dict[str, float] = {'index': LINE_WIDTH}
+        dashes = {'index': [1, 0]}
+        widths = {'index': LINE_WIDTH}
         domain, ticks = [0, 200], [0, 50, 100, 150, 200]
         if q.is_index:
             # Headline indexes have no fixed range; fit the axis to the values shown.
@@ -431,7 +459,7 @@ def build_chart(
             labelOverlap=True,
         ),
     )
-    if is_index:
+    if is_index or is_group:
         label_expr = alt.Undefined
     elif is_stat:
         label_expr = "datum.label + '%'"
@@ -578,7 +606,7 @@ def build_chart(
     # One tooltip per month: an invisible rule carrying every response's value.
     tip = prep.main[['date', *columns]].copy()
     tooltip = [alt.Tooltip('date:T', title='Month', format='%B %Y')]
-    fmt = '.1f' if (rolling or is_stat) else '.0f'
+    fmt = '.1f' if (rolling or is_stat or is_group) else '.0f'
     for c in columns:
         title = f'{labels[c]}{unit_suffix}'
         if rolling:
@@ -591,7 +619,7 @@ def build_chart(
                 alt.Tooltip(
                     f'{c}__monthly:Q',
                     title=f'{labels[c]}, monthly{unit_suffix}',
-                    format='.1f' if is_stat else '.0f',
+                    format='.1f' if is_stat or is_group else '.0f',
                 )
             )
     if q.is_index:
@@ -674,6 +702,9 @@ def build_chart(
 
     if q.is_index:
         subtitle = [f'Index, {catalog.headline.base}']
+    elif is_group:
+        assert q.breakdown is not None
+        subtitle = [f'Index, {catalog.headline.base}, by {q.breakdown.by_label}']
     elif is_index:
         subtitle = [f'{catalog.index_label}: percent favorable minus percent unfavorable, plus 100']
     elif q.is_inflation:

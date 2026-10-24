@@ -250,7 +250,9 @@ Use `src/betteroff/` with `cli.py` for commands, `api.py` for orchestration, `ca
 
 Keep CLI functions thin. Parsing receives bytes and returns data plus metadata; it does not make network requests. Charting consumes the same validated Dataset returned to Python users.
 
-## Delivery sequence and acceptance criteria
+## Initial release milestones (historical)
+
+These milestones described the initial v0.1 build and are retained as a record, not as current work or an audit of completion. The core CLI, exports, charts and recipes have since shipped; see the changelog for release details.
 
 ### 1. Prove table 34 end to end
 
@@ -291,44 +293,51 @@ Done when installation works on the supported platforms, the wheel contains the 
 
 Keep normal tests offline. A separate scheduled live check should fetch sparingly, validate privately and flag source changes without committing downloaded data to the repository. Pin the development environment with uv.lock; test reasonable dependency bounds before releasing.
 
-## Roadmap and future improvements
+## Roadmap
 
-Derived from post-v0.4 review to guide future releases:
+Status: 2026-10-23, after v0.5.0. This is a prioritized set of candidates, not a release commitment. Reorder it when user requests, source changes or maintenance needs provide better evidence.
 
-### 1. Python API ergonomics
-- **Direct exports with metadata sidecars**: Add `ds.export(path, wide=False)` to write data files paired with `.meta.json` sidecars directly in Python.
-- **Fluent dataset filtering**: Provide an immutable `ds.filter(start=..., end=..., measure=...)` method that returns a new `Dataset` instance without manual `dataclasses.replace`.
-- **Parquet support**: Add `parquet` to data formats for type-preserving interchange with DuckDB, Polars and PyArrow.
-- **Polars / Arrow interoperability**: Expose zero-copy conversion helpers or ensure clean type casting for non-pandas analytics.
+### 1. Broaden coverage to published demographic series
 
-### 2. Network and performance
-- **Session and landing-page reuse**: Share an `httpx.Client` session across recipe jobs and cache the landing page links during a single run to avoid redundant TLS handshakes and page requests.
-- **RFC 7231 Retry-After**: Support HTTP-date timestamps in addition to integer seconds for accurate retry timing.
-- **Respecting quiet mode**: Ensure network retry messages route through logging or respect `-q/--quiet`.
+Extend beyond all-household results to selected Michigan index breakdowns by income, age, education, region and political party (tables 2n, 3n, 4n, 5a and 5b). Start with source and schema discovery for one breakdown; these layouts may not share the existing parser or the meaning of the all-household series. Add support only for series whose labels, population definitions, units and historical coverage can be verified.
 
-### 3. CLI usability and robustness
-- **Sidecar overwrite protection**: Ensure `check_writable` guards both the main file and its `.meta.json` sidecar.
-- **Recipe nested directories**: Create parent directories automatically when a recipe job name contains subdirectories.
-- **Cache management**: Add `cache clear` for purging specific or all snapshots, and show freshness status (`fresh`/`stale`) in `cache info`.
-- **Batch CLI retrieval**: Support retrieving multiple tables or questions in a single `betteroff get` command.
+**Outcome:** users can retrieve and compare a documented demographic series without confusing its population or measure with the all-household result.
 
-### 4. Charting and visualization
-- **Dark mode theme support**: Offer a `--dark` flag or dark-palette styling (view background, contrast text, inverted grid, adapted recession fills).
-- **Graceful vl-convert handling**: Intercept `ImportError` on static export when `vl-convert-python` is absent and raise `MissingDependencyError`.
-- **Methodology annotations**: Surface break rules and tooltip context interactively.
+**Acceptance:** catalog metadata identifies the subgroup and source table; parser fixtures cover real layout variants; validation catches changed labels and missing periods; docs explain comparability limits. Begin with one table and expand only after that contract proves out.
 
-### 5. Data scope and future-proofing
-- **Inflation expectations (Tables 32 and 33)**: Support expected price changes over the next 12 months and next 5 years (mean, median, percentiles, distribution shares) via a dedicated inflation parser. *(Implemented in v0.5.0)*
-- **Demographic and political-party breakdowns**: Extend beyond all-household aggregates to Michigan's published Index of Consumer Sentiment, Current, and Expected series by income tercile (table 2n), age group (3n), education group (4n), region (5a), and political party (5b).
-- **Modern Excel (.xlsx) transition**: Guard against future format migrations by supporting ZIP/OpenXML signatures and an openpyxl fallback.
+**Status:** done for all five tables (2n, 3n, 4n, 5a and 5b), as `--by income`, `age`, `education`, `region` and `party`; see [docs/data.md](docs/data.md#index-breakdowns). Group definitions come from Michigan's FAQ and questionnaire where available; party and region definitions remain unstated in the tables, and the notes say so.
 
-### 6. Tooling and CI
-- **Python version matrix**: Test Python 3.12 and 3.13 in CI alongside 3.11 and 3.14.
-- **Coverage tracking**: Add `pytest-cov` to dev groups and maintain coverage metrics.
+### 2. Reproduce work from a chosen saved snapshot
 
-## Explicitly deferred
+Recipes record snapshot identities and the cache retains content-addressed history, but users cannot select a particular saved snapshot for a later run. Add explicit snapshot selection to the API and recipe workflow before adding more automation around recipes.
 
-No web service, data mirror, LLM query layer, respondent microdata, significance testing, arbitrary cross-survey comparisons, publication automation or full terminal dashboard in v0.1. Demographic series can follow once the all-household contract works. The first useful milestone is one command that retrieves table 34 correctly every time.
+**Outcome:** a user can rebuild an export or chart from the exact source bytes used previously, even after a refresh.
+
+**Acceptance:** selection is explicit and validated; manifests record the chosen snapshot; missing or pruned snapshots fail clearly rather than falling back to the latest data; offline tests cover both success and failure.
+
+### 3. Prepare for source workbook format changes
+
+Support modern `.xlsx` only when Michigan changes a relevant download or a verified fixture demonstrates the need. Keep the current parser behavior stable and dispatch by file signature, not filename alone.
+
+**Outcome:** a source format migration is a bounded parser change, not a silent data loss or a failed refresh users must diagnose themselves.
+
+**Acceptance:** representative `.xls` and `.xlsx` fixtures produce equivalent normalized data; invalid files and access pages remain validation errors; no cache pointer moves until parsing succeeds.
+
+### Demand-led candidates
+
+These are plausible improvements, but there is not yet enough evidence to schedule them ahead of the priorities above:
+
+- Python `Dataset` filtering and direct export helpers.
+- Parquet output and Arrow/Polars interoperability.
+- Batch retrieval and more cache-management commands, such as clearing selected snapshots.
+- Dark chart styling and richer methodology annotations.
+- Coverage reporting and broader Python-version CI coverage.
+
+Promote an item when a concrete user workflow, issue or recurring maintenance cost justifies its API and support burden. Do not add convenience surface area solely because it is listed here.
+
+## Out of scope for now
+
+No web service or data mirror, LLM query layer, respondent microdata, significance testing, arbitrary cross-survey comparisons, publication automation or full terminal dashboard. Revisit only if the product's audience or data-use terms materially change.
 
 ## Sources and implementation references
 

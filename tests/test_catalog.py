@@ -6,14 +6,18 @@ from betteroff.errors import InputError
 
 def test_identifiers_are_unique(catalog):
     ids = [q.id for q in catalog.questions]
-    tables = [q.table for q in catalog.questions]
+    tables = [q.table for q in catalog.questions if not q.is_breakdown]
     assert len(ids) == len(set(ids))
     assert len(tables) == len(set(tables))
+    # A breakdown table holds one entry per headline index.
+    pairs = [(q.table, q.breakdown.index_id) for q in catalog.questions if q.breakdown]
+    assert len(pairs) == len(set(pairs))
+    assert not {t for t, _ in pairs} & set(tables)
 
 
 def test_every_question_supports_the_index(catalog):
     for q in catalog.questions:
-        if q.is_index or q.is_inflation:
+        if q.is_index or q.is_inflation or q.is_breakdown:
             continue
         polarities = [r.polarity for r in q.responses]
         assert polarities.count('positive') == 1, q.id

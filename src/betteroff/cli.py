@@ -86,6 +86,14 @@ MeasureOpt = Annotated[
         'only have index.',
     ),
 ]
+ByOpt = Annotated[
+    str | None,
+    typer.Option(
+        '--by',
+        help='Break a headline index (ICS, ICC or ICE) down by group: income, age, '
+        'education, region or party.',
+    ),
+]
 ForceOpt = Annotated[bool, typer.Option('--force', help='Overwrite an existing output file.')]
 QuietOpt = Annotated[
     bool, typer.Option('--quiet', '-q', help='Hide notices; keep warnings that change meaning.')
@@ -196,6 +204,7 @@ def _fmt(value: Any) -> str:
 @app.command('describe')
 def describe_cmd(
     question: QuestionArg,
+    by: ByOpt = None,
     as_json: Annotated[bool, typer.Option('--json', help='Print catalog details as JSON.')] = False,
 ) -> None:
     """Show wording, responses, notes and, if cached, the latest values.
@@ -204,6 +213,8 @@ def describe_cmd(
     """
     catalog = load_catalog()
     q = catalog.resolve(question)
+    if by:
+        q = catalog.breakdown_of(q, by)
     if as_json:
         import json
 
@@ -217,6 +228,23 @@ def describe_cmd(
         out.print(
             f"Units: index, {catalog.headline.base}. Once Michigan releases a month's "
             'preliminary reading, it is included and marked preliminary until the final arrives.'
+        )
+    elif q.breakdown is not None:
+        b = q.breakdown
+        out.print(f'[dim]Table {q.table} · id {q.id} · by {b.by_label}[/dim]\n')
+        out.print(f'{escape(q.wording)}\n')
+        table = Table(box=None, pad_edge=False, header_style='bold')
+        table.add_column('Group id', style='cyan')
+        table.add_column('Label')
+        table.add_column('Source label', style='dim')
+        table.add_column('Population', style='dim')
+        for r in q.responses:
+            table.add_row(r.id, r.label, r.source_label, f'{b.by}:{r.id}')
+        out.print(table)
+        others = [o.table for o in catalog.questions if o.is_index and o.id != b.index_id]
+        out.print(
+            f'\nUnits: index, {catalog.headline.base}, one series per group. Table {q.table} '
+            f'also covers {" and ".join(others)}: try `betteroff get {others[0]} --by {b.by}`.'
         )
     elif q.is_inflation:
         out.print(f'[dim]Table {q.table} · id {q.id} · all households[/dim]\n')
@@ -274,9 +302,13 @@ def _describe_recent(ds: Dataset) -> None:
         f'{meta["coverage"]["latest_period"]})[/dim]'
     )
     table = Table(box=None, pad_edge=False, header_style='bold')
-    table.add_column(
-        'Response' if not (ds.question.is_index or ds.question.is_inflation) else 'Series'
-    )
+    if ds.question.is_breakdown:
+        heading = 'Group'
+    elif ds.question.is_index or ds.question.is_inflation:
+        heading = 'Series'
+    else:
+        heading = 'Response'
+    table.add_column(heading)
     for _, row in recent.iterrows():
         table.add_column(_month_label(row), justify='right')
     table.add_column('Last 24 months', no_wrap=True)
@@ -319,10 +351,13 @@ def _load(
     start: str | None,
     end: str | None,
     measure: str | None,
+    by: str | None = None,
 ) -> Dataset:
     from .api import get
 
-    return get(question, refresh=refresh, offline=offline, start=start, end=end, measure=measure)
+    return get(
+        question, refresh=refresh, offline=offline, start=start, end=end, measure=measure, by=by
+    )
 
 
 TABLE_ROWS = 24
@@ -336,9 +371,11 @@ def get_cmd(
     ] = None,
     fmt: Annotated[str | None, typer.Option('--format', '-f', help='table, csv or json.')] = None,
     wide: Annotated[
-        bool, typer.Option('--wide', help='One row per month, one column per response id.')
+        bool,
+        typer.Option('--wide', help='One row per month, one column per response id or group.'),
     ] = False,
     measure: MeasureOpt = None,
+    by: ByOpt = None,
     start: StartOpt = None,
     end: EndOpt = None,
     refresh: RefreshOpt = False,
@@ -378,7 +415,7 @@ def get_cmd(
     if meta is not None:
         check_writable(meta, force)
 
-    ds = _load(question, refresh, offline, start, end, measure)
+    ds = _load(question, refresh, offline, start, end, measure, by)
     if output is not None:
         output.write_text(render_data(ds, chosen, wide), encoding='utf-8')
         side = sidecar_path(output)
@@ -398,6 +435,8 @@ def _print_table(ds: Dataset) -> None:
     q = ds.question
     if q.is_index:
         headers = {'index': q.label}
+    elif q.is_breakdown:
+        headers = {r.id: r.label for r in q.responses}
     elif q.is_inflation:
         if ds.measure in ('median', 'mean'):
             headers = {ds.measure: ds.measure.title() + ' (%/yr)'}
@@ -426,15 +465,16 @@ def _print_table(ds: Dataset) -> None:
     table.add_column('Month')
     for col in ds.value_columns:
         table.add_column(headers[col], justify='right')
-    if not q.is_index:
+    has_cases = 'cases' in wide
+    if has_cases:
         table.add_column('Cases', justify='right', style='dim')
     for _, row in shown.iterrows():
         cells = [_month_label(row, '%Y-%m'), *(_fmt(row[c]) for c in ds.value_columns)]
-        if not q.is_index:
+        if has_cases:
             cells.append(_fmt(row['cases']))
         table.add_row(*cells)
     out.print(table)
-    if q.is_index:
+    if q.is_index or q.is_breakdown:
         unit = f'index values, {load_catalog().headline.base}'
     elif q.is_inflation:
         unit = (
@@ -483,13 +523,14 @@ def chart_cmd(
         typer.Option(
             '--responses',
             help='Responses to draw, comma-separated: ids from `betteroff describe` or '
-            'positive, negative, neutral, nonresponse. Defaults to all.',
+            'positive, negative, neutral, nonresponse; group ids with --by. Defaults to all.',
         ),
     ] = None,
     recessions: Annotated[
         bool, typer.Option('--recessions', help='Shade NBER recessions.')
     ] = False,
     measure: MeasureOpt = None,
+    by: ByOpt = None,
     start: Annotated[
         str | None,
         typer.Option(
@@ -539,6 +580,8 @@ def chart_cmd(
     _configure(quiet)
     require_altair()
     q = load_catalog().resolve(question)
+    if by:
+        q = load_catalog().breakdown_of(q, by)
     chosen_theme = load_theme(theme)
     chosen_font = resolve_font(font)
     from .models import check_measure

@@ -19,6 +19,7 @@ RECIPE_SCHEMA_VERSION = 1
 RUN_MANIFEST = 'betteroff-run.json'
 JOB_KEYS = {
     'question',
+    'by',
     'name',
     'start',
     'end',
@@ -104,6 +105,8 @@ def load_recipe(path: Path) -> Recipe:
         if 'question' not in j:
             raise bad(f'job {i} needs a question')
         question = load_catalog().resolve(str(j['question']))
+        if j.get('by'):
+            question = load_catalog().breakdown_of(question, str(j['by']))
         measure = check_measure(_str(j.get('measure')), question)
         data_formats = list(j.get('data_formats', []))
         chart_formats = list(j.get('chart_formats', []))

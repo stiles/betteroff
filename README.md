@@ -106,6 +106,27 @@ $ betteroff get ICS -f csv | tail -2
 
 When the final reading replaces a preliminary one, Betteroff reports the month as finalized, with both values. Charts mark a preliminary latest month with an open dot and a note.
 
+## Indexes by group
+
+`--by` gives any headline index within groups of respondents, from Michigan's tables 2n to 5b:
+
+```bash
+betteroff get ICS --by income                    # bottom, middle and top income thirds
+betteroff get ICE --by party --wide -o ice_party.csv
+betteroff chart ICC --by age --rolling 12
+betteroff chart ICS --by party --responses democrat,republican
+```
+
+| `--by` | Table | Groups | Ids |
+| --- | --- | --- | --- |
+| `income` | 2n | Bottom, middle and top third of household income | `consumer_sentiment_by_income`, `current_conditions_by_income`, `consumer_expectations_by_income` |
+| `age` | 3n | 18-34, 35-54, 55 and older | `..._by_age` |
+| `education` | 4n | High school or less, some college, college degree | `..._by_education` |
+| `region` | 5a | Northeast, North Central, South, West | `..._by_region` |
+| `party` | 5b | Democrats, independents, Republicans | `..._by_party` |
+
+Tidy rows name the group in the `population` column, such as `income:top_third` or `party:democrat`; wide output has one column per group. These come from the embargoed detailed-data site, so they have only final readings and can trail the all-households index. Each grouping has its own limits: income terciles are recomputed every month, Michigan doesn't define its party or region groups in the tables, and party readings are monthly only since February 2017. `betteroff describe ICS --by income` lists them, and [docs/data.md](https://github.com/stiles/betteroff/blob/main/docs/data.md#index-breakdowns) has the details.
+
 ## Supported tables
 
 Every table in Michigan's catalog that uses the historical three-category layout, with one positive, one neutral and one negative response plus nonresponse where reported:
@@ -131,7 +152,7 @@ Every table in Michigan's catalog that uses the historical three-category layout
 | 43 | `home_selling_conditions` | Selling conditions for houses |
 | 45 | `home_value_change` | Change in home values during the past year |
 
-Tables with other layouts (the index components and demographic breakdowns, income and price distributions, probabilities and reasons for opinions) aren't supported yet. All series cover all households.
+Tables with other layouts (the index components, income distributions, probabilities and reasons for opinions) aren't supported yet. Every series except the [index breakdowns](#indexes-by-group) covers all households.
 
 ## How it works
 

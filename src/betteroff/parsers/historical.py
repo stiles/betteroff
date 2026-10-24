@@ -115,6 +115,49 @@ def _number(value: object, row: int, col_label: str) -> float:
         ) from None
 
 
+def read_rows(
+    grid: Grid, hdr: int, columns: dict[int, str], labels: dict[int, str], table: str
+) -> tuple[list[dict[str, object]], list[str]]:
+    """Month rows below the header as records keyed by `columns`; text rows become notes."""
+    records: list[dict[str, object]] = []
+    notes: list[str] = []
+    seen: dict[date, int] = {}
+    for i in range(hdr + 1, len(grid)):
+        row = grid[i]
+        if all(not str(v).strip() for v in row):
+            continue
+        month_text = str(row[0]).strip()
+        year = row[1] if len(row) > 1 else ''
+        month = MONTHS.get(month_text[:3].lower())
+        if month is None or not isinstance(year, int | float):
+            values = [str(v).strip() for v in row if str(v).strip()]
+            if all(not re.fullmatch(r'-?[\d.]+%?', v) for v in values):
+                notes.append(' '.join(values))
+                continue
+            raise ValidationError(
+                f'Could not read the date in source row {i + 1}: {values[:4]}.',
+                'The source layout may have changed; please report an issue.',
+            )
+        when = date(int(year), month, 1)
+        if when in seen:
+            raise ValidationError(
+                f'Table {table} lists {when:%B %Y} twice (source rows '
+                f'{seen[when] + 1} and {i + 1}).',
+                'Please report an issue; the parser will not guess which row is correct.',
+            )
+        seen[when] = i
+        record: dict[str, object] = {'date': when}
+        for col, key in columns.items():
+            record[key] = _number(row[col] if col < len(row) else '', i, labels[col])
+        records.append(record)
+    if not records:
+        raise ValidationError(
+            f'Table {table} contained no observations.',
+            'The download may be incomplete; try again with --refresh.',
+        )
+    return records, notes
+
+
 def parse_grid(grid: Grid, question: Question) -> ParsedTable:
     hdr = _find_header(grid)
     labels = _column_labels(grid, hdr)
@@ -139,43 +182,7 @@ def parse_grid(grid: Grid, question: Question) -> ParsedTable:
             'please report an issue.',
         )
 
-    records = []
-    notes: list[str] = []
-    seen: dict[date, int] = {}
-    for i in range(hdr + 1, len(grid)):
-        row = grid[i]
-        if all(not str(v).strip() for v in row):
-            continue
-        month_text = str(row[0]).strip()
-        year = row[1] if len(row) > 1 else ''
-        month = MONTHS.get(month_text[:3].lower())
-        if month is None or not isinstance(year, int | float):
-            values = [str(v).strip() for v in row if str(v).strip()]
-            if all(not re.fullmatch(r'-?[\d.]+%?', v) for v in values):
-                notes.append(' '.join(values))
-                continue
-            raise ValidationError(
-                f'Could not read the date in source row {i + 1}: {values[:4]}.',
-                'The source layout may have changed; please report an issue.',
-            )
-        when = date(int(year), month, 1)
-        if when in seen:
-            raise ValidationError(
-                f'Table {question.table} lists {when:%B %Y} twice (source rows '
-                f'{seen[when] + 1} and {i + 1}).',
-                'Please report an issue; the parser will not guess which row is correct.',
-            )
-        seen[when] = i
-        record: dict[str, object] = {'date': when}
-        for col, key in columns.items():
-            record[key] = _number(row[col] if col < len(row) else '', i, labels[col])
-        records.append(record)
-
-    if not records:
-        raise ValidationError(
-            f'Table {question.table} contained no observations.',
-            'The download may be incomplete; try again with --refresh.',
-        )
+    records, notes = read_rows(grid, hdr, columns, labels, question.table)
     order = ['date', *(r.id for r in question.responses), 'total', 'index', 'cases']
     frame = pd.DataFrame.from_records(records)[order]
     frame['date'] = pd.to_datetime(frame['date'])

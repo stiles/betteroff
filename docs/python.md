@@ -13,9 +13,10 @@ bo.search('home values')        # list[Question], best match first
 bo.list_questions()             # every supported question
 q = bo.describe('34')           # Question for an id, table number or index code (ICS)
 q.wording, q.responses, q.notes
+bo.describe('ICS', by='party')  # the index's breakdown, consumer_sentiment_by_party
 ```
 
-`Question` is a frozen dataclass with `id`, `table`, `title`, `wording`, `responses`, `keywords`, `notes`, `breaks` and `monthly_since`. Headline indexes are `Question`s too, with `kind == 'index'` (`q.is_index`), their code (`ICS`, `ICC`, `ICE`) as `table`, a definition as `wording` and no responses. Each `Response` has `id`, `label`, `source_label` and `polarity` (`positive`, `neutral`, `negative` or `nonresponse`). `q.to_dict()` gives a JSON-ready copy.
+`Question` is a frozen dataclass with `id`, `table`, `title`, `wording`, `responses`, `keywords`, `notes`, `breaks` and `monthly_since`. Headline indexes are `Question`s too, with `kind == 'index'` (`q.is_index`), their code (`ICS`, `ICC`, `ICE`) as `table`, a definition as `wording` and no responses. Each `Response` has `id`, `label`, `source_label` and `polarity` (`positive`, `neutral`, `negative` or `nonresponse`). Index breakdowns have `kind == 'breakdown'` (`q.is_breakdown`), their groups as `responses` with polarity `group`, and a `q.breakdown` with the grouping (`by`, `by_label`), the all-households `index_id` and the group colors. `q.to_dict()` gives a JSON-ready copy.
 
 ## Getting data
 
@@ -27,8 +28,11 @@ ds = bo.get(
     start=None,            # 'YYYY', 'YYYY-MM', 'YYYY-MM-DD' or datetime.date
     end=None,
     measure=None,          # 'share' or 'index'; defaults to share, or index for ICS, ICC, ICE
+    by=None,               # with ICS, ICC or ICE: 'income', 'age', 'education', 'region' or 'party'
 )
 ```
+
+`bo.get('ICS', by='party')` and `bo.get('consumer_sentiment_by_party')` return the same Dataset. See [Index breakdowns](data.md#index-breakdowns) for what the groups mean and how they compare with the all-households index.
 
 `get` follows the same cache rules as the CLI: a snapshot checked in the past 24 hours is reused; otherwise the source is checked. If an automatic check fails, you get the saved snapshot and a `BetteroffWarning`. If `refresh=True` fails, `get` raises.
 
@@ -36,8 +40,8 @@ ds = bo.get(
 
 | Attribute | Contents |
 | --- | --- |
-| `ds.data` | Tidy DataFrame: `date`, `question_id`, `measure`, `response_id`, `response_label`, `value`, `unit`, `cases`, `population`. Headline indexes have `preliminary` instead of `cases` |
-| `ds.wide()` | One row per month: `date`, one column per response id in catalog order, `cases` |
+| `ds.data` | Tidy DataFrame: `date`, `question_id`, `measure`, `response_id`, `response_label`, `value`, `unit`, `cases`, `population`. Headline indexes have `preliminary` instead of `cases`. Breakdowns have neither, and `population` names the group, such as `party:democrat` |
+| `ds.wide()` | One row per month: `date`, one column per response id in catalog order, `cases`. Breakdowns have one column per group id and no `cases` |
 | `ds.metadata` | Dict with question, source, snapshot, coverage, notes, quality flags and revisions |
 | `ds.question` | The `Question` |
 | `ds.frame` | Full history in source shape, including `total` and `index`, ignoring `start`, `end` and `measure` |
@@ -53,7 +57,7 @@ ds = bo.get(
 chart = ds.chart(
     rolling=12,         # trailing mean over 12 calendar months
     monthly=True,       # thin monthly lines behind the average; raw= is the old name
-    responses=None,     # e.g. ['positive', 'negative'] or 'better_off,worse_off'
+    responses=None,     # e.g. ['positive', 'negative'], 'better_off,worse_off' or ['democrat']
     recessions=True,    # NBER bands
     start='2000',       # displayed range; rolling is computed on full history first
     end=None,

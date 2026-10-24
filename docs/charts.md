@@ -26,6 +26,16 @@ Charts of ICS, ICC and ICE fit the vertical axis to the values shown, in steps o
 
 When the latest month is preliminary and in the displayed range, it's drawn as an open dot and the subtitle says so, for example "October 2026 is a preliminary reading; the open dot marks it." With `--rolling`, the dot sits on the last average, which includes the preliminary month. Tooltips give each month's release, preliminary or final.
 
+## Index breakdowns
+
+Charts of a breakdown, such as `betteroff chart ICS --by income`, draw one line per group with direct labels. They fit the axis to the values shown, like the headline indexes, and the subtitle names the grouping: "Index, 1966 = 100, by income tercile". Group colors are fixed in the catalog rather than taken from `--theme`, so a group looks the same on every chart:
+
+- Income, age and education run light to dark from the lowest group to the highest, in teal-blue, purple and orange.
+- Regions use four distinct Okabe-Ito colors.
+- Party uses blue for Democrats, gray for independents and red for Republicans.
+
+Party readings are monthly from February 2017, so party charts start there. `--start 2006` shows the earlier readings, which draw as short segments and dots between gaps.
+
 ## Missing months
 
 The data is reindexed to every calendar month, with explicit nulls for months that have no reading. Lines use Vega-Lite's `break-paths-show-domains` mode, so they break at gaps instead of drawing a straight line across them. Readings with no reading in the month before or after are drawn as dots, since a line can't show them. When the displayed range has gaps, the subtitle says so.
@@ -57,6 +67,8 @@ Polarity names are handy in recipes, where one `responses = ["positive", "negati
 - The sidecar records the response ids drawn.
 
 Exports from `get` always include every response. `--responses` works with shares only, not `--measure index`.
+
+For a breakdown, `--responses` takes group ids instead: `betteroff chart ICS --by party --responses democrat,republican`.
 
 ## Recessions
 

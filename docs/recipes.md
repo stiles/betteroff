@@ -50,15 +50,16 @@ Each `[[jobs]]` table:
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `question` | required | Id or table number |
+| `by` | none | With a headline index, the grouping for its breakdown: `income`, `age`, `education`, `region` or `party` |
 | `name` | question id | Base file name. Each job needs a unique name |
 | `data_formats` | `[]` | Any of `csv`, `json` |
 | `chart_formats` | `[]` | Any of `html`, `svg`, `png`, `pdf`, `vl.json` |
-| `measure` | `share`; `index` for headline indexes | `share` or `index` |
+| `measure` | `share`; `index` for headline indexes and breakdowns | `share` or `index` |
 | `wide` | `false` | Wide data files |
 | `start`, `end` | full range | Months to include in data files and charts |
 | `rolling` | none | Trailing average for charts |
 | `monthly` | `true` | Show monthly lines behind a rolling average. `raw`, the old name, still works |
-| `responses` | all | Responses to draw: a list of ids or `positive`, `negative`, `neutral`, `nonresponse` |
+| `responses` | all | Responses to draw: a list of ids or `positive`, `negative`, `neutral`, `nonresponse`; group ids for a breakdown |
 | `recessions` | `false` | Shade NBER recessions |
 | `width`, `height` | 960, 540 | Chart frame size |
 | `theme` | `okabe-ito` | Color theme name, or a `.toml` theme file relative to the recipe |

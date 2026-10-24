@@ -13,6 +13,8 @@ Shell completion: `betteroff --install-completion` for your current shell, or `-
 
 Every command that takes a question accepts its id (`government_policy`), its published table number (`34`) or `"table 34"`. The table number is Michigan's table identifier, not a question number in the questionnaire. A near-miss suggests the closest ids.
 
+`describe`, `get` and `chart` also take `--by GROUPING` with a headline index to get that index within respondent groups: `income`, `age`, `education`, `region` or `party`. `betteroff get ICS --by income` is the same as `betteroff get consumer_sentiment_by_income`. Each breakdown table holds all three indexes, so a table number alone (`2n`, `5b`) resolves to the sentiment index; ids such as `ics_by_income` and `ice_by_party` work too. `--by` with a question table, or with a grouping that doesn't exist, fails before anything is fetched. See [Index breakdowns](data.md#index-breakdowns).
+
 ## `search TEXT`
 
 Searches ids, titles, keywords, question wording and response labels. Every word must match. Works offline.
@@ -30,12 +32,13 @@ Lists every supported table in the same format as `search`.
 
 ## `describe ID`
 
-Shows the title, table, exact question wording, response ids, labels, source labels, polarity, units, the index definition, notes and usage terms.
+Shows the title, table, exact question wording, response ids, labels, source labels, polarity, units, the index definition, notes and usage terms. For a breakdown it lists the group ids, source labels and `population` values instead.
 
 If the question has a cached snapshot, it adds the latest three months and a 24-month sparkline for each response, with the range the sparkline spans. It never fetches.
 
 | Option | Effect |
 | --- | --- |
+| `--by GROUPING` | Describe a headline index's breakdown, such as `--by income` |
 | `--json` | Print the catalog entry as JSON |
 
 ## `get ID`
@@ -46,8 +49,9 @@ Fetches the table, or reuses the cache, validates it and prints or writes it.
 | --- | --- |
 | `-o, --output FILE` | Write `.csv` or `.json`, plus `FILE.meta.json` |
 | `-f, --format table\|csv\|json` | Override the format. Must agree with the `-o` extension |
-| `--wide` | One row per month, one column per response id |
-| `-m, --measure share\|index` | Response shares in percent (default) or the index score. Headline indexes only have `index`, their default |
+| `--wide` | One row per month, one column per response id, or per group for a breakdown |
+| `-m, --measure share\|index` | Response shares in percent (default) or the index score. Headline indexes and breakdowns only have `index`, their default |
+| `--by GROUPING` | A headline index within groups: `income`, `age`, `education`, `region` or `party` |
 | `--start`, `--end` | Limit months; `YYYY`, `YYYY-MM` or `YYYY-MM-DD` |
 | `--refresh` | Check the source now, even if the cache is fresh |
 | `--offline` | Use the saved snapshot only; fail if there is none |
@@ -73,6 +77,18 @@ date,good_job,fair,poor_job,dk_na,cases
 
 Wide headers are response ids in catalog order, so they stay stable across releases. Labels are in the sidecar. JSON output is a list of records with the same fields.
 
+A breakdown has no `cases` column. Its tidy rows carry the group in `population`, and its wide columns are group ids:
+
+```csv
+date,question_id,measure,response_id,response_label,value,unit,population
+2026-09-01,consumer_sentiment_by_party,index,index,Index of Consumer Sentiment,35.6,index,party:democrat
+```
+
+```csv
+date,democrat,independent,republican
+2026-09-01,35.6,47.7,77.2
+```
+
 ## `chart ID`
 
 Builds a chart from the same validated data `get` returns. Needs the `charts` extra.
@@ -83,10 +99,11 @@ Builds a chart from the same validated data `get` returns. Needs the `charts` ex
 | `-f, --format` | Override the format. Must agree with the `-o` extension |
 | `--rolling N` | Trailing average over N calendar months |
 | `--monthly/--no-monthly` | Draw the thin monthly lines behind a rolling average (default), or show only the average. `--no-raw` still works |
-| `--responses LIST` | Draw only these responses, comma-separated: ids or `positive`, `negative`, `neutral`, `nonresponse`. Default all |
+| `--responses LIST` | Draw only these responses, comma-separated: ids or `positive`, `negative`, `neutral`, `nonresponse`. With `--by`, group ids such as `democrat,republican`. Default all |
 | `--recessions` | Shade NBER recessions |
-| `-m, --measure share\|index` | Response shares (default) or the index score. Headline indexes only have `index` |
-| `--start`, `--end` | Displayed range. Defaults to the start of monthly data, usually January 1978 |
+| `-m, --measure share\|index` | Response shares (default) or the index score. Headline indexes and breakdowns only have `index` |
+| `--by GROUPING` | Chart a headline index within groups: `income`, `age`, `education`, `region` or `party` |
+| `--start`, `--end` | Displayed range. Defaults to the start of monthly data, usually January 1978; October 1979 for income and February 2017 for party breakdowns |
 | `--width`, `--height` | Frame size in pixels for static output. Default 960 by 540 |
 | `-t, --theme NAME\|FILE` | Color theme: `okabe-ito` (default), `puor`, `brbg`, `rdbu`, `tol` or a `.toml` file |
 | `--font FAMILY` | Font family for chart text, such as `"IBM Plex Sans"`. Defaults to `BETTEROFF_FONT`, then Inter |

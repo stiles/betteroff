@@ -264,3 +264,71 @@ def source(monkeypatch) -> FakeSource:
 
 def mock_client(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+
+
+BreakdownRow = tuple[int, int, Sequence[float | str | None]]
+
+
+def build_breakdown_xls(
+    question: Question,
+    rows: Iterable[BreakdownRow],
+    *,
+    banner: str | None = None,
+    blocks: Sequence[str] | None = None,
+    labels: Sequence[str] | None = None,
+    stacked: Sequence[str] | None = None,
+    block_columns: Sequence[int] | None = None,
+    footer: Sequence[str] = (),
+) -> bytes:
+    """A workbook in the verified table 2n-5b layout. Each row lists every block's groups.
+
+    `stacked` puts a first line of each group label above the header row, as in 2n and 4n.
+    """
+    import xlwt
+
+    b = question.breakdown
+    assert b is not None
+    blocks = list(blocks or b.blocks)
+    labels = list(labels or [r.source_label for r in question.responses])
+    n = len(labels)
+    header_row = 6 if stacked else 5
+    book = xlwt.Workbook()
+    sheet = book.add_sheet(f'REDBK0{question.table.upper()}')
+    sheet.write(3, 2 + n * len(blocks) // 2, banner if banner is not None else b.banner)
+    for k, block in enumerate(blocks):
+        col = block_columns[k] if block_columns else 2 + k * n + 1
+        sheet.write(header_row - (2 if stacked else 1), col, block)
+    sheet.write(header_row, 0, 'Date  of  Survey')
+    for k in range(len(blocks)):
+        for j, lab in enumerate(labels):
+            sheet.write(header_row, 2 + k * n + j, lab)
+            if stacked:
+                sheet.write(header_row - 1, 2 + k * n + j, stacked[j])
+    r = header_row + 2
+    for year, month, values in rows:
+        sheet.write(r, 0, MONTH_NAMES[month - 1])
+        sheet.write(r, 1, float(year))
+        for c, v in enumerate(values, start=2):
+            if v is not None:
+                sheet.write(r, c, v)
+        r += 1
+    for line in footer:
+        r += 1
+        sheet.write(r, 0, line)
+    buf = io.BytesIO()
+    book.save(buf)
+    return buf.getvalue()
+
+
+def party_rows() -> list[BreakdownRow]:
+    """Sparse early readings, a gap, then monthly 2017-02 through 2018-01.
+
+    Values encode block and group: sentiment 50s, current 60s, expected 70s;
+    Democrats +0, Independents +1, Republicans +2, plus a month offset of 0.1.
+    """
+    months = [(2008, 3), (2008, 4), (2010, 6)]
+    months += [(2017 + (m // 12), m % 12 + 1) for m in range(1, 13)]
+    rows: list[BreakdownRow] = []
+    for i, (y, m) in enumerate(months):
+        rows.append((y, m, [base + g + i / 10 for base in (50, 60, 70) for g in range(3)]))
+    return rows

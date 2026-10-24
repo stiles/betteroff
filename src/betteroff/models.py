@@ -47,7 +47,7 @@ def check_measure(measure: str | None, question: Question | None = None) -> str:
     """
     if not measure:
         if question is not None:
-            if question.is_index:
+            if question.is_index or question.is_breakdown:
                 return 'index'
             if question.is_inflation:
                 return 'median'
@@ -55,6 +55,11 @@ def check_measure(measure: str | None, question: Question | None = None) -> str:
     if measure not in MEASURES:
         raise InputError(f'Unknown measure "{measure}".', f'Use one of: {", ".join(MEASURES)}.')
     if question is not None:
+        if question.is_breakdown and measure != 'index':
+            raise InputError(
+                f'{question.title} has only index values for each group.',
+                'Drop --measure, or use --measure index.',
+            )
         if question.is_index and measure != 'index':
             raise InputError(
                 f'{question.title} is an index; it has no response shares or summary statistics.',
@@ -107,6 +112,8 @@ class Dataset:
 
     @property
     def value_columns(self) -> list[str]:
+        if self.question.is_breakdown:
+            return [r.id for r in self.question.responses]
         if self.question.is_inflation:
             if self.measure == 'median':
                 return ['median']
@@ -121,8 +128,36 @@ class Dataset:
 
     @property
     def data(self) -> pd.DataFrame:
-        """Tidy observations: one row per month and response, or per month for an index."""
+        """Tidy observations: one row per month and response, or per month for an index.
+
+        Breakdowns have one row per month and group; `population` names the group,
+        such as "party:democrat".
+        """
         wide = self._trim(self.frame)
+        if self.question.is_breakdown:
+            b = self.question.breakdown
+            assert b is not None
+            tidy = wide.melt(
+                id_vars=['date'],
+                value_vars=self.value_columns,
+                var_name='group',
+                value_name='value',
+            )
+            order = {rid: i for i, rid in enumerate(self.value_columns)}
+            tidy['_order'] = tidy['group'].map(order)
+            tidy = tidy.sort_values(['date', '_order'], ignore_index=True)
+            return pd.DataFrame(
+                {
+                    'date': tidy['date'],
+                    'question_id': self.question.id,
+                    'measure': 'index',
+                    'response_id': 'index',
+                    'response_label': b.index_title,
+                    'value': tidy['value'].astype('float64'),
+                    'unit': 'index',
+                    'population': f'{b.by}:' + tidy['group'],
+                }
+            )
         if self.question.is_index:
             return pd.DataFrame(
                 {
@@ -236,9 +271,11 @@ class Dataset:
         return out
 
     def wide(self) -> pd.DataFrame:
-        """One row per month and one column per response id, in catalog order."""
+        """One row per month and one column per response id or group, in catalog order."""
         if self.question.is_index:
             return self._trim(self.frame)[['date', 'index', 'preliminary']].copy()
+        if self.question.is_breakdown:
+            return self._trim(self.frame)[['date', *self.value_columns]].copy()
         frame = self._trim(self.frame)[['date', *self.value_columns, 'cases']].copy()
         frame['cases'] = frame['cases'].astype('Int64')
         return frame

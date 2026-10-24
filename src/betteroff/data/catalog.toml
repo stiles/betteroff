@@ -375,3 +375,114 @@ responses = [
     { id = "decreased", label = "Decreased", source_label = "Value Decreased", polarity = "negative" },
     { id = "dk_na", label = "Don't know, no answer", source_label = "DK, NA", polarity = "nonresponse" },
 ]
+
+# Index breakdowns: the sentiment, current and expected indexes within respondent
+# groups, from Michigan's tables 2n-5b. Each [[breakdowns]] entry becomes one
+# catalog entry per index, with an id such as "consumer_sentiment_by_party";
+# `betteroff get ICS --by party` resolves to it.
+#
+# Layout, checked against the historical ("RB") downloads on 2026-10-23: a banner
+# row naming the grouping; a row with the three `breakdown_indexes` labels, each
+# over its block; then group labels, sometimes split over two rows, ending in the
+# "Date of Survey" row. Every block has one column per group in the same order.
+# There is no Total, Relative or Cases column and no question wording. `banner`,
+# the block labels and each group's `source_label` must match the file exactly
+# after collapsing whitespace; the parser fails if they don't.
+#
+# Group colors are fixed per breakdown rather than taken from the chart theme:
+# a light-to-dark ramp for ordered groups (income, age, education), distinct
+# Okabe-Ito colors for regions and conventional blue, gray and red for party.
+[[breakdown_indexes]]
+index = "consumer_sentiment"
+source_label = "SENTIMENT INDEX"
+
+[[breakdown_indexes]]
+index = "current_conditions"
+source_label = "CURRENT INDEX"
+
+[[breakdown_indexes]]
+index = "consumer_expectations"
+source_label = "EXPECTED INDEX"
+
+[[breakdowns]]
+table = "2n"
+by = "income"
+by_label = "income tercile"
+banner = "HOUSEHOLD INCOME TERCILES"
+keywords = ["income", "income tercile", "terciles", "low income", "high income", "rich", "poor", "inequality", "table 2n"]
+notes = [
+    "Each month Michigan splits respondents into three equal-sized groups by reported household income, so the dollar range of each tercile changes from month to month. A tercile is a position within that month's sample, not a fixed income band.",
+    "The table doesn't say how respondents who don't report their income are handled, so the terciles' average need not equal the all-households index.",
+    "Readings by income start in October 1979.",
+]
+groups = [
+    { id = "bottom_third", label = "Bottom third", source_label = "Bottom Third", color = "#41b6c4" },
+    { id = "middle_third", label = "Middle third", source_label = "Middle Third", color = "#225ea8" },
+    { id = "top_third", label = "Top third", source_label = "Top Third", color = "#081d58" },
+]
+
+[[breakdowns]]
+table = "3n"
+by = "age"
+by_label = "age"
+banner = "AGE OF RESPONDENT"
+keywords = ["age", "age group", "young", "younger", "old", "older", "seniors", "generation", "table 3n"]
+notes = [
+    "Groups are the respondent's age when surveyed: 18 to 34, 35 to 54, and 55 and older. Each group is whoever fell in that range that month, so a group's index over time doesn't follow the same people.",
+]
+groups = [
+    { id = "age_18_34", label = "Ages 18-34", source_label = "18-34", color = "#9e9ac8" },
+    { id = "age_35_54", label = "Ages 35-54", source_label = "35-54", color = "#6a51a3" },
+    { id = "age_55_plus", label = "Ages 55+", source_label = "55+", color = "#3f007d" },
+]
+
+[[breakdowns]]
+table = "4n"
+by = "education"
+by_label = "education"
+banner = "EDUCATION OF RESPONDENT"
+keywords = ["education", "college", "college degree", "high school", "degree", "schooling", "table 4n"]
+notes = [
+    "Michigan groups respondents as high school or less, some college and college degree. The table doesn't say where associate's degrees or vocational certificates fall; the current questionnaire lists them as a separate answer.",
+    "The share of adults with a college degree has grown a lot since 1978, so each group's makeup has changed. Compare a group's level across decades with care.",
+]
+groups = [
+    { id = "high_school_or_less", label = "High school or less", source_label = "H.S. or Less", color = "#fd8d3c" },
+    { id = "some_college", label = "Some college", source_label = "Some College", color = "#d94801" },
+    { id = "college_degree", label = "College degree", source_label = "College Degree", color = "#7f2704" },
+]
+
+[[breakdowns]]
+table = "5a"
+by = "region"
+by_label = "region"
+banner = "REGION OF RESIDENCE"
+keywords = ["region", "regional", "northeast", "midwest", "north central", "south", "west", "geography", "table 5a"]
+notes = [
+    "Michigan labels the regions NE, NC, S and W and doesn't list their states in the table. The names match the Census Bureau's four regions; North Central was the Census Bureau's name for the Midwest until 1984.",
+]
+groups = [
+    { id = "northeast", label = "Northeast", source_label = "NE", color = "#e69f00" },
+    { id = "north_central", label = "North Central", source_label = "NC", color = "#56b4e9" },
+    { id = "south", label = "South", source_label = "S", color = "#009e73" },
+    { id = "west", label = "West", source_label = "W", color = "#cc79a7" },
+]
+
+[[breakdowns]]
+table = "5b"
+by = "party"
+by_label = "political party"
+banner = "RESPONDENT POLITICAL PARTY"
+monthly_since = "2017-02-01"
+keywords = ["party", "political party", "partisan", "partisanship", "politics", "democrats", "republicans", "independents", "table 5b"]
+notes = [
+    "Michigan labels the groups DEM, IND and REP. The current questionnaire asks: \"Generally speaking, do you usually think of yourself as a Republican, a Democrat, an Independent, or what?\" with \"Other\" as a possible answer, and asks independents which party they feel closer to. The table doesn't say how \"Other\" answers or independents who lean toward a party are counted, so the groups' average need not equal the all-households index.",
+    "Readings by party are irregular before February 2017: one month in 1980, a few in 1984-85 and 2006, and runs with gaps from 2008 to 2016. Charts start in February 2017 by default; pass --start for the earlier readings, which draw as separate segments or dots.",
+    "Values are on the headline index scale (1966 = 100) and are final readings only; there are no preliminary months. Compare a group with the all-households index only for months both cover.",
+    "Each group is whoever identified with that party when surveyed. Its size and makeup shift over time, so a change in a group's index can reflect who belongs to the group as well as how its members feel.",
+]
+groups = [
+    { id = "democrat", label = "Democrats", source_label = "DEM", color = "#2166ac" },
+    { id = "independent", label = "Independents", source_label = "IND", color = "#7f7f7f" },
+    { id = "republican", label = "Republicans", source_label = "REP", color = "#b2182b" },
+]

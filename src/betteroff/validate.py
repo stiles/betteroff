@@ -7,7 +7,7 @@ from datetime import date
 
 import pandas as pd
 
-from .catalog import Question
+from .catalog import Question, load_catalog
 from .errors import ValidationError
 from .parsers.historical import ParsedTable
 
@@ -106,12 +106,59 @@ def validate_inflation(
     return flags
 
 
+def validate_breakdown(
+    parsed: ParsedTable, question: Question, today: date | None = None
+) -> list[dict]:
+    """Checks for an index within respondent groups.
+
+    Raises on impossible data. Flags months missing after the series became
+    monthly, and months where some groups have no value.
+    """
+    frame = parsed.frame
+    ids = [r.id for r in question.responses]
+    today = today or date.today()
+    if frame['date'].duplicated().any():
+        raise _fail(question, 'duplicate months')
+    latest = frame['date'].max().date()
+    if latest > today.replace(day=1):
+        raise _fail(question, f'latest month {latest:%B %Y} is in the future')
+    for rid in ids:
+        if frame[rid].isna().all():
+            raise _fail(question, f'group "{rid}" has no values')
+    values = frame[ids]
+    if ((values < 0) | (values > 200)).any().any():
+        raise _fail(question, 'an index value is outside 0-200')
+
+    flags: list[dict] = []
+    monthly_since = question.monthly_since or load_catalog().monthly_since
+    since = max(pd.Timestamp(monthly_since), frame['date'].min())
+    expected = pd.date_range(since, frame['date'].max(), freq='MS')
+    missing = expected.difference(pd.DatetimeIndex(frame['date']))
+    flags += [
+        {'date': f'{d:%Y-%m-%d}', 'check': 'missing_month', 'detail': 'no reading'}
+        for d in missing[:MAX_FLAGS_PER_CHECK]
+    ]
+    partial = values.isna().any(axis=1)
+    for idx in frame.index[partial][:MAX_FLAGS_PER_CHECK]:
+        absent = [rid for rid in ids if pd.isna(frame.at[idx, rid])]
+        flags.append(
+            {
+                'date': f'{frame.at[idx, "date"]:%Y-%m-%d}',
+                'check': 'missing_group_value',
+                'detail': 'no value for ' + ', '.join(absent),
+            }
+        )
+    return [*parsed.flags, *flags]
+
+
 def validate(parsed: ParsedTable, question: Question, today: date | None = None) -> list[dict]:
     """Raise on impossible data; return a list of flags for suspicious rows."""
     if question.is_index:
         return validate_index(parsed, question, today)
     if question.is_inflation:
         return validate_inflation(parsed, question, today)
+    if question.is_breakdown:
+        return validate_breakdown(parsed, question, today)
     frame = parsed.frame
     ids = [r.id for r in question.responses]
     shares = frame[ids]

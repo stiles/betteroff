@@ -41,11 +41,27 @@ class IndexSource:
 
 
 @dataclass(frozen=True)
+class Breakdown:
+    """One headline index within respondent groups, from a table such as 5b."""
+
+    by: str  # Short name used with --by, e.g. "party"
+    by_label: str  # "political party"
+    banner: str  # Source row naming the grouping
+    index_id: str  # The all-households index, e.g. "consumer_sentiment"
+    index_title: str
+    block: str  # Source label over this index's columns, e.g. "SENTIMENT INDEX"
+    blocks: tuple[str, ...]  # Every index block in source order
+    colors: tuple[str, ...]  # One per group, aligned with Question.responses
+
+
+@dataclass(frozen=True)
 class Question:
-    """A catalog entry: a survey question's table, or a headline index.
+    """A catalog entry: a survey question's table, a headline index or a breakdown.
 
     Headline indexes (`kind == 'index'`) have no responses, use their code
-    (ICS, ICC, ICE) as `table` and carry an `IndexSource`.
+    (ICS, ICC, ICE) as `table` and carry an `IndexSource`. Breakdowns
+    (`kind == 'breakdown'`) list their groups as responses with polarity
+    "group" and carry a `Breakdown`.
     """
 
     id: str
@@ -61,6 +77,7 @@ class Question:
     label: str = ''  # Short series label for headline indexes or inflation series
     aliases: tuple[str, ...] = ()
     source: IndexSource | None = None
+    breakdown: Breakdown | None = None
 
     @property
     def is_index(self) -> bool:
@@ -69,6 +86,10 @@ class Question:
     @property
     def is_inflation(self) -> bool:
         return self.kind == 'inflation'
+
+    @property
+    def is_breakdown(self) -> bool:
+        return self.kind == 'breakdown'
 
     def response(self, response_id: str) -> Response:
         for r in self.responses:
@@ -88,6 +109,31 @@ class Question:
                 'definition': self.wording,
                 'notes': list(self.notes),
                 'source_files': [self.source.history_url, self.source.current_url],
+            }
+        if self.is_breakdown:
+            assert self.breakdown is not None
+            return {
+                'id': self.id,
+                'kind': self.kind,
+                'table': self.table,
+                'title': self.title,
+                'label': self.label,
+                'aliases': list(self.aliases),
+                'definition': self.wording,
+                'index': self.breakdown.index_id,
+                'by': self.breakdown.by,
+                'by_label': self.breakdown.by_label,
+                'groups': [
+                    {
+                        'id': r.id,
+                        'label': r.label,
+                        'source_label': r.source_label,
+                        'population': f'{self.breakdown.by}:{r.id}',
+                    }
+                    for r in self.responses
+                ],
+                'notes': list(self.notes),
+                'monthly_since': self.monthly_since.isoformat() if self.monthly_since else None,
             }
         return {
             'id': self.id,
@@ -145,6 +191,31 @@ class Catalog:
         raise InputError(
             f'Unknown question or table "{identifier}". {hint}'.strip(),
             'Run `betteroff list` or `betteroff search TEXT` to find an identifier.',
+        )
+
+    @property
+    def breakdown_dimensions(self) -> list[str]:
+        return list(dict.fromkeys(q.breakdown.by for q in self.questions if q.breakdown))
+
+    def breakdown_of(self, question: Question, by: str) -> Question:
+        """The breakdown of a headline index (or of another breakdown's index) by `by`."""
+        key = by.strip().lower()
+        available = ', '.join(self.breakdown_dimensions)
+        if question.breakdown is not None:
+            index_id = question.breakdown.index_id
+        elif question.is_index:
+            index_id = question.id
+        else:
+            raise InputError(
+                f'--by works only with the headline indexes; {question.id} is table '
+                f'{question.table}.',
+                'Try `betteroff get ICS --by party`, or ICC or ICE.',
+            )
+        for q in self.questions:
+            if q.breakdown and q.breakdown.index_id == index_id and q.breakdown.by == key:
+                return q
+        raise InputError(
+            f'No breakdown "{by}" for {index_id}.', f'Use --by with one of: {available}.'
         )
 
     def search(self, text: str) -> list[Question]:
@@ -230,10 +301,56 @@ def _question(raw: dict) -> Question:
     )
 
 
+def _breakdowns(raw: dict, indexes: tuple[Question, ...]) -> list[Question]:
+    """One catalog entry per breakdown table and headline index."""
+    by_id = {q.id: q for q in indexes}
+    blocks = tuple(b['source_label'] for b in raw.get('breakdown_indexes', ()))
+    out = []
+    for t in raw.get('breakdowns', ()):
+        groups = tuple(
+            Response(id=g['id'], label=g['label'], source_label=g['source_label'], polarity='group')
+            for g in t['groups']
+        )
+        for block in raw.get('breakdown_indexes', ()):
+            index = by_id[block['index']]
+            out.append(
+                Question(
+                    id=f'{index.id}_by_{t["by"]}',
+                    table=str(t['table']),
+                    title=f'{index.title} by {t["by_label"]}',
+                    wording=(
+                        f"Michigan's table {t['table']} publishes the {index.title} within each "
+                        f'{t["by_label"]} group: {", ".join(g.label for g in groups)}.'
+                    ),
+                    responses=groups,
+                    keywords=tuple(dict.fromkeys([*index.keywords, *t.get('keywords', ())])),
+                    aliases=(f'{index.table.lower()}_by_{t["by"]}',),
+                    notes=tuple(t.get('notes', ())),
+                    monthly_since=(
+                        date.fromisoformat(t['monthly_since']) if 'monthly_since' in t else None
+                    ),
+                    kind='breakdown',
+                    label=f'{index.label} by {t["by_label"]}',
+                    breakdown=Breakdown(
+                        by=t['by'],
+                        by_label=t['by_label'],
+                        banner=t['banner'],
+                        index_id=index.id,
+                        index_title=index.title,
+                        block=block['source_label'],
+                        blocks=blocks,
+                        colors=tuple(g['color'] for g in t['groups']),
+                    ),
+                )
+            )
+    return out
+
+
 @cache
 def load_catalog() -> Catalog:
     text = resources.files('betteroff').joinpath('data/catalog.toml').read_text('utf-8')
     raw = tomllib.loads(text)
+    indexes = tuple(_index(i) for i in raw['indexes'])
     return Catalog(
         landing_url=raw['landing_url'],
         attribution=raw['attribution'],
@@ -250,7 +367,8 @@ def load_catalog() -> Catalog:
             notes=tuple(raw['headline']['notes']),
         ),
         questions=(
-            *(_index(i) for i in raw['indexes']),
+            *indexes,
+            *_breakdowns(raw, indexes),
             *(_question(q) for q in raw['questions']),
         ),
     )
