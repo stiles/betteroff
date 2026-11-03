@@ -14,7 +14,8 @@ import xlrd
 
 from betteroff.catalog import load_catalog
 from betteroff.fetch import TIMEOUT, USER_AGENT, download_table
-from betteroff.parsers.historical import parse
+from betteroff.parsers.historical import parse as parse_historical
+from betteroff.parsers.inflation import parse as parse_inflation
 from betteroff.validate import validate
 
 pytestmark = pytest.mark.live
@@ -42,7 +43,8 @@ TABLES = [q for q in CATALOG.questions if not q.is_index and not q.is_breakdown]
 @pytest.mark.parametrize('question', TABLES, ids=lambda q: f'{q.table}-{q.id}')
 def test_table_parses_validates_and_matches_source(client, question):
     download = download_table(question.table, CATALOG.landing_url, client=client)
-    parsed = parse(download.content, question)
+    parser = parse_inflation if question.is_inflation else parse_historical
+    parsed = parser(download.content, question)
     flags = validate(parsed, question)
     assert not [f for f in flags if f['check'] == 'wording_changed'], flags
 
