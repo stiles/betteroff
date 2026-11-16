@@ -4,6 +4,8 @@ redistributing real downloads, so tests build workbooks in the verified layout."
 from __future__ import annotations
 
 import io
+import math
+import re
 from collections.abc import Callable, Iterable, Sequence
 
 import httpx
@@ -28,6 +30,27 @@ MONTH_NAMES = [
     'December',
 ]
 LANDING_URL = 'https://data.sca.isr.umich.edu/tables.php'
+
+
+def raw_rows(content: bytes) -> list[list[object]]:
+    """Read data rows straight from the workbook, without the parser's mapping logic."""
+    import xlrd
+
+    sheet = xlrd.open_workbook(file_contents=content).sheet_by_index(0)
+    rows = [sheet.row_values(r) for r in range(sheet.nrows)]
+    return [r for r in rows if isinstance(r[1], float) and re.match(r'[A-Z][a-z]+$', str(r[0]))]
+
+
+def source_number(value: object) -> float:
+    """Match the parsers: blank and NA cells are missing, not errors."""
+    if value is None or (isinstance(value, str) and not str(value).strip()):
+        return math.nan
+    if isinstance(value, int | float):
+        return float(value)
+    text = str(value).strip().rstrip('%').replace(',', '')
+    if not text or text.upper() == 'NA':
+        return math.nan
+    return float(text)
 
 Row = tuple[int, int, Sequence[float | str | None]]
 
@@ -127,12 +150,35 @@ def gov_xls(gov) -> bytes:
 
 
 def inflation_rows() -> list[tuple[int, int, Sequence[float | str | None]]]:
-    """Synthetic rows for inflation tables: 1 pre-1978 row with 'NA', then 24 monthly rows."""
+    """Synthetic rows for inflation tables: 1 pre-1978 row with 'NA', then 24 monthly rows.
+
+    Before January 1978 the source marks Down and the finer up-brackets as NA
+    (Same includes Same+Down; percent bins were coarser).
+    """
     rows: list[tuple[int, int, Sequence[float | str | None]]] = [
         (
             1977,
             12,
-            [5, 15, 10, 15, 15, 10, 10, 10, 5, 5, 100, 'NA', 'NA', 'NA', 'NA', 'NA', 'NA', 500],
+            [
+                'NA',
+                29,
+                53,
+                'NA',
+                'NA',
+                'NA',
+                'NA',
+                'NA',
+                'NA',
+                18,
+                100,
+                'NA',
+                'NA',
+                'NA',
+                'NA',
+                'NA',
+                'NA',
+                500,
+            ],
         )
     ]
     for i in range(24):
@@ -176,12 +222,12 @@ def build_inflation_xls(
         '',
         'Down',
         'Same',
-        '1-2%',
-        '3-4%',
-        '5%',
-        '6-9%',
-        '10-14%',
-        '15%+',
+        '1-2',
+        '3-4',
+        '5',
+        '6-9',
+        '10-14',
+        '15+',
         'DK Up',
         'DK,NA',
         'Total',
