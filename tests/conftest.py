@@ -52,6 +52,7 @@ def source_number(value: object) -> float:
         return math.nan
     return float(text)
 
+
 Row = tuple[int, int, Sequence[float | str | None]]
 
 
